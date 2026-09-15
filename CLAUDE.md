@@ -3,9 +3,9 @@
 ## What we're building
 An offline AI coach for **practice drives** before the DMV road test.
 - Dashcam video is analyzed by a local vision model on the Snapdragon NPU.
-- The model detects driving mistakes (minor = strike, critical = instant fail).
+- The model detects likely driving mistakes (minor = strike, critical = instant fail).
 - An Arduino UNO Q gives live signals: LEDs + vibration motor + LED-matrix mistake counter.
-- After the drive, a text model writes a report: PASS/FAIL, each mistake with timestamp + screenshot, and tips.
+- After the drive, a text model writes a report: a practice result, each mistake with timestamp + screenshot, and tips.
 - Pitch: "No internet. The video never leaves the laptop."
 - Positioning: a coach for practice drives and post-drive review. NOT for use during a real DMV exam.
 
@@ -13,12 +13,18 @@ An offline AI coach for **practice drives** before the DMV road test.
 - Critical driving error (e.g., running a red light, not stopping at a stop sign, failing to yield) = automatic FAIL.
 - Minor errors during the drive: up to 15 allowed.
 - Optional simplified "3 strikes" practice mode.
+- **Honest labelling:** mistakes are inferred from video alone, with no vehicle speed or GPS feed.
+  Report every detection as *possible* ("possible incomplete stop") unless we have a trustworthy speed
+  signal. This is coaching feedback, never an official DMV verdict — don't present it as one.
 
-## Hackathon scope: detect these 4 mistakes first
-1. Not fully stopping at a stop sign (critical)
-2. Going through a red light (critical)
-3. Following too close (minor)
-4. No head check before a lane change (minor; needs the driver-facing camera)
+## Hackathon scope: 4 mistakes, ordered by how confidently we can detect them
+
+| # | Mistake | Severity | Feasibility | Report it as |
+|---|---|---|---|---|
+| 1 | Not fully stopping at a stop sign | critical | feasible | "possible incomplete stop" |
+| 2 | Going through a red light | critical | feasible, harder | "possible red-light violation" |
+| 3 | Following too close | minor | experimental | "unsafe following-distance risk detected" |
+| 4 | No head check before a lane change | minor | hardest — build last | "no head check detected" |
 
 The forward dashcam cannot see head checks, mirror checks, turn signals, or hands.
 A second, driver-facing camera (laptop webcam) covers head checks.
@@ -54,20 +60,60 @@ A second, driver-facing camera (laptop webcam) covers head checks.
 ```
 LAPTOP                                     UNO Q
 dashcam video -> OpenCV                    Python listener (Linux)
-  fast layer: moving/stopped (every frame)     |
+  fast layer: ego motion (every frame)         |
   smart layer: Qwen3-VL every 1-2 s  --HTTP-->  Bridge.call("alert", level)
-    -> JSON: {stop_sign, red_light,             |
-             pedestrian, car_ahead_close}      Sketch (C++): LEDs, vibration, matrix
-  mistake logic (rules above)
+    -> JSON: {stop_sign, traffic_light,         |
+             light_is_for_our_lane,            Sketch (C++): LEDs, vibration, matrix
+             stop_line_visible, pedestrian}
+  state machine combines both over time
   end of drive -> Qwen3-4B writes report -> web page
 ```
 
 ## Two-layer detection (important)
 - The vision model takes seconds per frame, so it cannot check every frame.
-- Fast layer (plain OpenCV, instant): is the car moving or stopped?
+- Fast layer (plain OpenCV, every frame): ego motion — is the car moving, slowing, or stopped?
 - Smart layer (Qwen3-VL on NPU, every 1-2 s): what is in the scene? Ask for JSON only, e.g.
-  `{"stop_sign": true, "traffic_light": "red", "pedestrian_in_crosswalk": false, "car_ahead_close": false}`
-- Combine both: stop sign seen + car never reached "stopped" = rolling stop.
+  `{"stop_sign": true, "traffic_light": "red", "light_is_for_our_lane": true, "stop_line_visible": true, "pedestrian_in_crosswalk": false}`
+- Neither layer is enough on its own. Mistake logic is a **state machine** combining both over time.
+- **Never ask Qwen a judgement question** like "did the driver stop?". Ask it only what is visible in
+  this one frame. All timing and motion judgements come from OpenCV plus the state machine.
+
+## Detection design, per mistake
+
+### 1. Possible incomplete stop (rolling stop) — feasible
+- Qwen identifies that a stop sign is present and being approached.
+- OpenCV measures ego motion continuously, on every frame.
+- A state machine records the **minimum** motion during the approach window.
+- Motion stays low enough for ~0.5-1 s -> record a genuine stop.
+- Car passes the intersection without ever entering that low-motion state -> possible rolling stop.
+- Call it "possible incomplete stop" unless we also have trustworthy vehicle speed.
+
+### 2. Possible red-light violation — feasible but harder
+`traffic_light == red` + `moving == true` is NOT enough — the driver may simply be approaching the light.
+Both halves are required:
+
+```
+red signal relevant to our lane
+             +
+vehicle crosses the stop line / intersection boundary
+             =
+possible red-light violation
+```
+
+- Use carefully chosen test clips where the signal and the stop line are both clearly visible.
+- "Relevant to our lane" is the hard part: side-street signals and turn arrows cause false positives.
+
+### 3. Unsafe following-distance risk — experimental
+- Qwen's `car_ahead_close` is a subjective answer; never present it as a measured distance.
+- Hackathon label: "unsafe following-distance risk detected".
+- Better version if time allows: track the lead car's bounding box over several frames and estimate
+  time-to-collision from how fast the box grows. That is a measurement rather than an opinion.
+
+### 4. Head check — build last
+- A head check can take well under a second, so sampling Qwen every 2 s will simply miss it.
+- Needs a **fast head-pose layer on every driver-camera frame**, not the VLM.
+- Then intersect that head-pose signal with a lane-change window detected from the forward camera.
+- For the first complete demo: postpone this, or use synchronised prerecorded driver video.
 
 ## Alert levels (laptop -> UNO Q)
 | level | meaning | signal |
@@ -79,12 +125,12 @@ dashcam video -> OpenCV                    Python listener (Linux)
 LED matrix shows the minor-error count, e.g. "4/15".
 
 ## Build order (keep a working demo at every step; commit at each checkpoint)
-1. Laptop: read a dashcam video, sample frames, get JSON scene labels from Qwen3-VL.
-2. Laptop: fast moving/stopped detection + mistake rules; print mistakes with timestamps.
-3. UNO Q: Blink example in App Lab, then the alert app (Python listener + sketch).
-4. Connect laptop alerts -> UNO Q signals.
-5. End-of-drive report with Qwen3-4B + screenshots on a web page.
-6. Driver-facing camera for head checks.
+1. Stop-sign recognition + possible rolling-stop detection: Qwen scene JSON, OpenCV ego motion, state machine.
+2. Red-light warning, plus one controlled violation clip showing signal and stop line clearly.
+3. UNO Q: Blink in App Lab, then the alert app (Python listener + sketch) — LEDs and vibration.
+4. Timestamped screenshots + end-of-drive practice report (Qwen3-4B -> web page).
+5. Following-distance risk, if time remains.
+6. Head checks — only after everything above works.
 7. Polish: NPU speed panel (NPU vs CPU), backup demo recording.
 
 ## Demo plan
@@ -102,6 +148,9 @@ LED matrix shows the minor-error count, e.g. "4/15".
 
 ## Open questions
 - Where the dashcam videos come from (own recordings vs dataset).
+- Curated test clips needed: a clear stop-sign approach, and one red-light clip where both the
+  lane-relevant signal and the stop line are plainly visible.
+- What counts as "low motion" for a stop, in ego-motion units — needs calibration on real footage.
 - Exact GenieX Python API for sending images (check GenieX docs / examples folder).
 - UNO Q IP address on the local network.
 
