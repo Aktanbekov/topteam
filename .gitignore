@@ -1,0 +1,37 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# --- Secrets / local config ---
+.env
+.env.local
+config.local.json
+
+# --- Dashcam footage & captured media ---
+# Video files are large and may contain people who did not consent.
+# Keep them out of git; store them in a local folder instead.
+videos/
+footage/
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# --- Generated output (frames, screenshots, reports) ---
+output/
+frames/
+screenshots/
+reports/
+*.log
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
