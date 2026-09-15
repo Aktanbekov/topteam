@@ -39,21 +39,33 @@ A second, driver-facing camera (laptop webcam) covers head checks.
 
 ## Tech stack
 ### Laptop (main program, about 80% of the work)
-- Python
-- OpenCV: read dashcam video frame by frame; frame differencing to detect moving vs stopped
-- GenieX (Qualcomm on-device runtime): `pip install geniex`
-  - Vision model: `ai-hub-models/Qwen3-VL-4B-Instruct` (WORKING on this laptop already)
-  - Backup vision model: `ai-hub-models/Qwen2.5-VL-7B-Instruct`
-  - Report model: `ai-hub-models/Qwen3-4B` (or Qwen3-4B-Instruct-2507)
+- Python 3.12.10 (ARM64) at `%LOCALAPPDATA%\Programs\Python\Python312-arm64`
+- **No OpenCV.** `opencv-python` and `opencv-python-headless` have no Windows ARM64
+  wheel and fail to build from source on this laptop. Verified 2026-09-15. Instead:
+  - **PyAV** (`av`) decodes the dashcam video frame by frame — ffmpeg bindings, ARM64 wheel works.
+  - **numpy** does the frame differencing / ego-motion maths.
+  - Pillow encodes frames for the vision model and the report screenshots.
+- GenieX CLI v0.6.0 (QAIRT 2.45), installed at `%LOCALAPPDATA%\GenieX CLI\geniex.exe`
+  - Vision model: `qualcomm/Qwen3-VL-4B-Instruct:W4A16` — cached and WORKING.
+    Note the `qualcomm/` prefix and the `:W4A16` precision suffix; the API rejects the bare name.
+  - Report model: `qualcomm/Qwen3-4B` (not pulled yet)
   - `geniex serve` exposes an OpenAI-compatible API at `http://127.0.0.1:18181/v1`
-- requests: send alerts to the UNO Q
+  - `geniex serve -c npu|cpu|gpu|hybrid` picks the compute unit — this is how we build
+    the NPU-vs-CPU speed panel for the demo.
+- requests: alerts to the UNO Q, and the GenieX HTTP API
 - Report page: HTML/JS or React
 
 ### UNO Q (about 20% of the work)
-- Written and run with **Arduino App Lab** (one app = a Python file + a sketch)
-- Python listener (Linux side) -> `Bridge.call("alert", level)`
-- Sketch (C++) -> `Bridge.provide("alert", alert)` and drives the pins
-- Verify exact Bridge syntax: https://docs.arduino.cc/tutorials/uno-q/routerbridge-multilanguage/
+- Sketch is deployed with **Arduino App Lab**; the Linux side is a plain Python script.
+- Bridge syntax verified 2026-09-15 against the Arduino Router RPC docs:
+  - Sketch (C++): `#include "Arduino_RouterBridge.h"`, then `Bridge.begin()` and
+    `Bridge.provide("alert", alert)` in `setup()`. `Monitor.begin()` / `Monitor.println()` for debug.
+  - Linux (Python): connect to the Unix socket `/var/run/arduino-router.sock` and send
+    MessagePack RPC. `notify` is `[2, "method", [args]]` — fire-and-forget, which is all we need.
+    Needs `pip3 install msgpack --break-system-packages` on the board.
+  - **The built-in LED is active-low**: `digitalWrite(LED_BUILTIN, LOW)` turns it ON.
+  - The UNO Q ADC is 14-bit, so `analogRead` returns 0-16383 (not 0-1023).
+- Docs: https://docs.arduino.cc/tutorials/uno-q/routerbridge-multilanguage/
 - Reference template (laptop -> MCP -> UNO Q): https://github.com/DerrickJ1612/snapdragon-mcp-arduino
 
 ## Architecture
@@ -71,9 +83,12 @@ dashcam video -> OpenCV                    Python listener (Linux)
 
 ## Two-layer detection (important)
 - The vision model takes seconds per frame, so it cannot check every frame.
-- Fast layer (plain OpenCV, every frame): ego motion — is the car moving, slowing, or stopped?
-- Smart layer (Qwen3-VL on NPU, every 1-2 s): what is in the scene? Ask for JSON only, e.g.
+- Fast layer (PyAV + numpy, every frame): ego motion — is the car moving, slowing, or stopped?
+- Smart layer (Qwen3-VL on NPU, every ~3 s): what is in the scene? Ask for JSON only, e.g.
   `{"stop_sign": true, "traffic_light": "red", "light_is_for_our_lane": true, "stop_line_visible": true, "pedestrian_in_crosswalk": false}`
+- **Measured 2026-09-15:** ~2.7 s per vision call on a 640x480 frame once the model is warm
+  (~15 s on the very first call, which includes model load). So the smart layer realistically
+  samples every 3 s, not the 1-2 s originally assumed. Budget for that lag in the state machine.
 - Neither layer is enough on its own. Mistake logic is a **state machine** combining both over time.
 - **Never ask Qwen a judgement question** like "did the driver stop?". Ask it only what is visible in
   this one frame. All timing and motion judgements come from OpenCV plus the state machine.
@@ -151,8 +166,14 @@ LED matrix shows the minor-error count, e.g. "4/15".
 - Curated test clips needed: a clear stop-sign approach, and one red-light clip where both the
   lane-relevant signal and the stop line are plainly visible.
 - What counts as "low motion" for a stop, in ego-motion units — needs calibration on real footage.
-- Exact GenieX Python API for sending images (check GenieX docs / examples folder).
-- UNO Q IP address on the local network.
+- UNO Q IP address on the local network (`hostname -I` on the board).
+- Whether the external LEDs and vibration motor are wired yet, and to which pins.
+  The signal smoke test deliberately uses only the built-in LED so no wiring is needed.
+
+## Answered
+- **Sending images to GenieX:** the OpenAI-compatible `/v1/chat/completions` endpoint accepts
+  `content: [{"type": "text", ...}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}]`.
+  Verified working, and Qwen3-VL returned clean parseable JSON with no markdown fence.
 
 ## How to work with me (the developer)
 - I'm new to hardware and Arduino; I know web development and Python.

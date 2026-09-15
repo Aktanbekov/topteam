@@ -1,0 +1,10 @@
+# Laptop side (Snapdragon X / Windows ARM64, Python 3.12)
+#
+# NOTE: opencv-python has NO Windows ARM64 wheel and will not build from
+# source on this machine. Use PyAV (ffmpeg bindings) to decode video and
+# numpy for the frame-differencing / ego-motion maths instead.
+
+requests>=2.32     # alerts to the UNO Q, and the GenieX HTTP API
+numpy>=2.0         # frame differencing, ego-motion estimate
+av>=15.0           # video decoding (the OpenCV replacement)
+Pillow>=11.0       # frame encoding for the vision model, report screenshots
