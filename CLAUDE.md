@@ -103,6 +103,23 @@ dashcam video -> OpenCV                    Python listener (Linux)
 - Car passes the intersection without ever entering that low-motion state -> possible rolling stop.
 - Call it "possible incomplete stop" unless we also have trustworthy vehicle speed.
 
+**Measured on the synthetic test clips (2026-09-15).** The motion score is the frame-to-frame
+difference divided by the frame's spatial gradient, which approximates pixels of scene shift
+per frame. A raw difference does NOT work — it scales with how textured the scene is, so a
+bland road reads as "stopped" at 12 m/s. Numbers with `MOTION_THRESHOLD = 0.25`:
+
+| state | score |
+|---|---|
+| genuinely stopped | 0.00 - 0.05 |
+| crawling at 3 m/s | 0.27 - 0.6 |
+| driving at 12 m/s | 0.9 - 1.9 |
+
+Detected 8.8-11.7s against a true stop of 9.0-11.0s, and correctly found no stop at all in
+the rolling clip. **The margin is thin**: a 3 m/s crawl scores 0.27 against a 0.25 threshold,
+so a slower crawl (~1 m/s) would fall below it and be read as a genuine stop — a missed
+violation. Real footage also has sensor noise that lifts the "stopped" floor above 0.00,
+squeezing the gap further. Recalibrate on real video before the demo.
+
 ### 2. Possible red-light violation — feasible but harder
 `traffic_light == red` + `moving == true` is NOT enough — the driver may simply be approaching the light.
 Both halves are required:
@@ -117,6 +134,19 @@ possible red-light violation
 
 - Use carefully chosen test clips where the signal and the stop line are both clearly visible.
 - "Relevant to our lane" is the hard part: side-street signals and turn arrows cause false positives.
+
+**Qwen3-VL hallucinates traffic lights (measured 2026-09-15).** On the synthetic test clips,
+which contain NO traffic light of any kind, the model reported `traffic_light: "red"` at two
+separate timestamps — and at one of them also said `light_is_for_our_lane: true`. Reproducible
+across both clips at `temperature: 0`. It very likely reads the red octagonal stop sign as a
+red light, and the prompt's menu of colours pushes it to pick one.
+
+This is the single biggest threat to the demo: a hallucinated red light plus "moving" would
+fire a false **critical** error and sink our credibility on stage. Mitigations, in order:
+1. **Never act on a single frame.** Require the same detection in 2+ consecutive vision samples.
+2. Make the prompt demand evidence — only report a light if the actual signal housing is visible.
+3. Cross-check against the stop-line rule: no stop line or intersection crossing, no violation.
+4. Consider dropping the traffic-light field entirely on frames where `stop_sign` is true.
 
 ### 3. Unsafe following-distance risk — experimental
 - Qwen's `car_ahead_close` is a subjective answer; never present it as a measured distance.
