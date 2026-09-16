@@ -222,6 +222,31 @@ intersection-crossing test without tightening the prompt first.
 | 3 | critical mistake | red flashing + 3 buzzes |
 LED matrix shows the minor-error count, e.g. "4/15".
 
+## How to run it
+
+One command, from **Git Bash** (installed with Git for Windows):
+
+```bash
+./run.sh                  # analyse the video in the project root, open the player
+./run.sh clips/drive2.mov # a specific file
+./run.sh --reuse          # skip the vision pass, just rebuild the player
+./run.sh --every 5        # sample the vision model every 5s instead of 3
+```
+
+It starts `geniex serve` if nothing is listening, analyses the drive, builds the player and
+opens it. The vision pass is the slow part (~1 call per sample at ~2.7s); `--reuse` skips it
+when you are only changing the player or the motion threshold.
+
+The individual scripts still work on their own — `laptop/test_video.py` for motion-only
+threshold calibration, `laptop/analyze_video.py` for a full pass, `tools/make_player.py` to
+rebuild the page, `tools/serve_player.py` if a browser refuses to play the video from `file://`.
+
+**Gotcha the script works around:** Windows ships a Microsoft Store stub named `python.exe`
+that is not Python — it prints an advert and exits non-zero. `command -v python` finds it
+happily, so `run.sh` runs a trivial import to prove a candidate is real, and falls back to
+`~/AppData/Local/Programs/Python/Python3*/python.exe`. Same fallback for `geniex`. This also
+covers the case of a terminal opened before either was installed, which carries a stale PATH.
+
 ## Build order (keep a working demo at every step; commit at each checkpoint)
 1. Stop-sign recognition + possible rolling-stop detection: Qwen scene JSON, OpenCV ego motion, state machine.
 2. Red-light warning, plus one controlled violation clip showing signal and stop line clearly.
