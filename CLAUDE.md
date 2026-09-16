@@ -66,6 +66,43 @@ A second, driver-facing camera (laptop webcam) covers head checks.
 - Report page: HTML/JS or React
 
 ### UNO Q (about 20% of the work)
+
+**The link is MCP over USB/ADB, not Wi-Fi. Verified working end to end 2026-09-15.**
+
+`adb` ships with App Lab at
+`%LOCALAPPDATA%\Arduino15\packages\arduino\tools\adb\32.0.0\adb.exe`. In Git Bash,
+prefix every adb command with `MSYS_NO_PATHCONV=1` or it rewrites `/home/arduino`
+into a Windows path and `adb push` fails with `secure_mkdirs failed`.
+
+```
+player page --POST /api/alert--> serve_player.py --MCP--> 127.0.0.1:3001
+   --adb forward--> UNO Q mcp_server.py --> router socket --> alert_sketch.ino
+```
+
+Board facts, all checked on the device:
+- Debian 13, Python 3.13.5, user `arduino`, `/var/run/arduino-router.sock` is world-writable.
+- **`wlan0` was down out of the box**, so `hostname -I` returned only docker's
+  `172.17.0.1`. Any plan that needs the board's IP is dead until Wi-Fi is up.
+  It is now on 192.168.1.143, but USB remains the transport — no Wi-Fi to fail on stage.
+- There was **no pip at all** and no internet, so `pip3 install msgpack` could
+  never have run. `arduino_bridge.py` therefore encodes MessagePack itself:
+  every message is an array of small ints and a short method name, which is
+  three type tags and ~20 lines. Verified byte-exact, `notify alert(3)` ->
+  `93 02 a5 "alert" 91 03`. **Do not reintroduce the msgpack dependency.**
+- FastMCP 4.0.4 now on both board and laptop.
+- On the **laptop**, `pip install fastmcp` fails: `cryptography` has no win-arm64
+  source build. A prebuilt wheel exists but pip resolves to an older version
+  first. Fix: `pip install --only-binary :all: cryptography` then `pip install fastmcp`.
+  Same wheel trap as OpenCV — check `--only-binary` before concluding a package
+  is unavailable on this laptop.
+
+**`bridge.call()` vs `bridge.notify()` matters.** `alert` and `resetDrive` are
+`void` in the sketch, so they never reply — calling them with `call()` blocks
+until timeout. Use `notify` for those and `call` only for `mcu_ping`, which
+returns a value. That is what makes `mcu_ping` worth having: it is the only
+call that proves the *sketch* is running, not merely that the router accepted
+our bytes.
+
 - Sketch is deployed with **Arduino App Lab**; the Linux side is a plain Python script.
 - Bridge syntax verified 2026-09-15 against the Arduino Router RPC docs:
   - Sketch (C++): `#include "Arduino_RouterBridge.h"`, then `Bridge.begin()` and
