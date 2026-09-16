@@ -390,13 +390,28 @@ happily, so `run.sh` runs a trivial import to prove a candidate is real, and fal
 covers the case of a terminal opened before either was installed, which carries a stale PATH.
 
 ## Build order (keep a working demo at every step; commit at each checkpoint)
-1. Stop-sign recognition + possible rolling-stop detection: Qwen scene JSON, OpenCV ego motion, state machine.
-2. Red-light warning, plus one controlled violation clip showing signal and stop line clearly.
-3. UNO Q: Blink in App Lab, then the alert app (Python listener + sketch) — LEDs and vibration.
+1. **DONE** — Stop-sign recognition + possible rolling-stop detection: Qwen scene JSON,
+   ego motion, state machine. Graded three ways (full / brief / possible incomplete stop).
+2. **PARTLY** — Red-light warning works and is confirmed across samples. Still missing the
+   controlled violation clip showing the signal and the stop line clearly.
+3. **DONE** — UNO Q: matrix, Modulino Pixels and Vibro, driven live from the review player
+   over MCP on a USB/ADB tunnel. End to end on real hardware.
 4. Timestamped screenshots + end-of-drive practice report (Qwen3-4B -> web page).
+   Screenshots exist in `output/frames`; the report model is not pulled yet.
 5. Following-distance risk, if time remains.
 6. Head checks — only after everything above works.
 7. Polish: NPU speed panel (NPU vs CPU), backup demo recording.
+
+### First working demo — tagged `demo-1`, 2026-09-16
+
+One command does everything: `./run.sh --unoq`. GenieX, the vision pass, the board's
+MCP server, the USB tunnel, the player, the browser. Press play and the hardware follows.
+
+**The one thing standing between this and a demo that lands: footage.** IMG_9830 contains
+no violation, so the drive only ever reaches level 1. The strip pulses amber and the matrix
+shows the octagon, but the buzz for a mistake, the strike counter and the X never fire in a
+real run — `laptop/test_signals.py` is the only way to see them. Get a clip with a genuine
+rolling stop or red-light crossing before anything else.
 
 ## Demo plan
 - Play a dashcam video as if live; LEDs/buzzer react; counter goes up; report appears at the end.
