@@ -29,9 +29,16 @@ before blaming the code.
 
 1. Connect the UNO Q to the laptop with the USB-C cable.
 2. Open **Arduino App Lab** and create a new app.
-3. In the library manager, install **Modulino** and **Arduino_LED_Matrix**.
+3. In the library manager, install **Modulino**. That is the only one you need —
+   it covers every Modulino node, Pixels and Vibro included.
 4. Paste in [`alert_sketch/alert_sketch.ino`](alert_sketch/alert_sketch.ino).
 5. Deploy it to the board.
+
+**Don't look for `Arduino_LED_Matrix` in the library manager — it isn't there.**
+It ships inside the Arduino Zephyr Core that the UNO Q runs on, so `#include
+"Arduino_LED_Matrix.h"` just works. Note the class is spelled
+`Arduino_LED_Matrix` on the UNO Q, where the UNO R4 calls it `ArduinoLEDMatrix`;
+R4 matrix examples off the web will not compile here as written.
 
 The sketch registers two functions, `alert(int level)` and `reset()`:
 
@@ -114,12 +121,15 @@ App Lab monitor for the `alert level -> N  strikes: N` lines the sketch prints.
 board first, then the Qwiic cables. If only one responds, the two may have been
 set to the same address; the Modulino library ships an `AddressChanger` example.
 
-**The matrix stays dark** — this is the most likely thing to need adjusting. The
-sketch uses `matrix.draw(frame)` with a `uint8_t frame[104]` laid out as
-`frame[row * 13 + col]`. If your library version wants something else, that call
-and `setPixel()` are the only two places to change. The library also ships
-`add_to_frame(char, pos)` for text if you would rather not keep the 3x5 font in
-the sketch.
+**The matrix stays dark** — the sketch uses `matrix.draw(frame)` with a
+`uint8_t frame[104]` laid out as `frame[row * 13 + col]`, writing `0xFF` for a
+lit pixel. If nothing appears, `setPixel()` and that one `draw()` call are the
+only two places to change. `loadPixels(arr, size)` is the alternative the same
+library offers.
+
+Pixels written as `0xFF` rather than `1` on purpose: the matrix supports
+grayscale via `setGrayscaleBits()`, so a value of `1` can come out almost
+invisible. `0xFF` reads as "on" whether the buffer is binary or brightness.
 
 **Laptop can't reach the board** — both devices must be on the same network.
 Check with `ping <unoq-ip>` from the laptop. The listener binds `0.0.0.0`, so it

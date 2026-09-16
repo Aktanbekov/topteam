@@ -24,14 +24,23 @@
 #include "Modulino.h"
 
 // ---------------------------------------------------------------- hardware
-const int COLS = 13;
-const int ROWS = 8;
-
-ArduinoLEDMatrix matrix;
+// Arduino_LED_Matrix is built into the Arduino Zephyr Core that the UNO Q uses.
+// Do NOT install it from the library manager - it is not there, and it does not
+// need to be. Note the class is Arduino_LED_Matrix here; the UNO R4 spells the
+// same thing ArduinoLEDMatrix, so R4 examples will not compile as written.
+Arduino_LED_Matrix matrix;
 ModulinoPixels strip;
 ModulinoVibro vibro;
 
+const int COLS = Arduino_LED_Matrix::canvasWidth;   // 13
+const int ROWS = Arduino_LED_Matrix::canvasHeight;  // 8
+
 uint8_t frame[ROWS * COLS];
+
+// Full brightness rather than 1. The matrix supports grayscale
+// (setGrayscaleBits), so a value of 1 could come out nearly invisible; 0xFF is
+// "on" whether the buffer is treated as binary or as brightness.
+const uint8_t PIXEL_ON = 0xFF;
 
 // ------------------------------------------------------------------ state
 // Set from the Linux side, read by loop(). The count lives here rather than on
@@ -85,7 +94,7 @@ void setPixel(int row, int col) {
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
     return;
   }
-  frame[row * COLS + col] = 1;
+  frame[row * COLS + col] = PIXEL_ON;
 }
 
 void drawDigit(int value, int col) {
