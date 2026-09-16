@@ -550,7 +550,7 @@ $("processing").innerHTML = [
   ["model", (P.model || "—").replace(/^qualcomm\//, "")],
   ["endpoint", P.endpoint || "—"],
   ["compute", P.compute_requested ? `${P.compute_requested} (requested)` : "server default"],
-  ["calls", `${P.calls}${P.failed ? ` (${P.failed} failed)` : ""}`],
+  ["calls", P.calls ? `${P.calls}${P.failed ? ` (${P.failed} failed)` : ""}` : "none in this build"],
   ["warm median / p95", P.median_s ? `${P.median_s}s / ${P.p95_s}s` : "not measured"],
   ["first call (cold)", P.first_call_s ? `${P.first_call_s}s (model load)` : "—"],
   ["total analysis", P.analysis_s ? `${P.analysis_s}s` : "—"],

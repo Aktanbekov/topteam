@@ -246,7 +246,7 @@ $("trust").innerHTML = rejected.length
 $("processing").innerHTML = [
   ["Model", (P.model || "—").replace(/^qualcomm\//, "")],
   ["Compute", P.compute_requested ? `${P.compute_requested} (requested)` : "server default"],
-  ["Inference calls", `${P.calls}${P.failed ? ` · ${P.failed} failed` : ""}`],
+  ["Inference calls", P.calls ? `${P.calls}${P.failed ? ` · ${P.failed} failed` : ""}` : "none in this build"],
   ["Median warm call", P.median_s ? `${P.median_s}s` : "not measured"],
   ["p95 warm call", P.p95_s ? `${P.p95_s}s` : "not measured"],
   ["First call (cold)", P.first_call_s ? `${P.first_call_s}s incl. model load` : "—"],

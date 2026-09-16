@@ -37,10 +37,12 @@ def freeze(timeline, grade):
         "contacted for this build. The motion track was recomputed from the "
         "video just now."
     )
-    # The timings belonged to the recorded run, not to this one. Keeping them
-    # would let the page report an inference latency for calls it never made.
+    # The timings and the call count belonged to the recorded run, not to this
+    # one. Keeping them would let the page report an inference latency - and a
+    # number of NPU calls - for calls this build never made, directly next to a
+    # banner saying GenieX was not contacted.
     for key in ("analysis_s", "real_time_ratio", "first_call_s", "median_s",
-                "p95_s", "min_s", "max_s"):
+                "p95_s", "min_s", "max_s", "calls", "failed"):
         processing[key] = None
     frozen["processing"] = processing
     frozen["grade_expected"] = grade
