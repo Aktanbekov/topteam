@@ -21,9 +21,12 @@
  * the animations run off millis() and buzzes are queued.
  */
 
+#include <string.h>  // memcmp / memcpy on the frame buffer
+
 #include "Arduino_RouterBridge.h"
-#include <Arduino_LED_Matrix.h>
+// Same order as hardware_test.ino, which is known to work on this board.
 #include <Arduino_Modulino.h>
+#include <Arduino_LED_Matrix.h>
 
 // ---------------------------------------------------------------- hardware
 // Arduino_LED_Matrix ships inside the Arduino Zephyr Core the UNO Q runs on -
@@ -40,6 +43,12 @@ const int ROWS = 8;
 const int PIXEL_COUNT = ROWS * COLS;  // 104
 
 uint8_t frame[PIXEL_COUNT];
+uint8_t lastFrame[PIXEL_COUNT];  // what is actually on the display now
+
+// ~30 fps. Fast enough for the blink, slow enough that the matrix scan and the
+// I2C bus both keep up.
+const unsigned long DRAW_INTERVAL_MS = 33;
+unsigned long lastDrawAt = 0;
 
 // 1 is what the working hardware test writes, so that is what we write. If
 // shapes ever look too dim, matrix.setGrayscaleBits() changes the scale and
@@ -135,13 +144,18 @@ void drawNumber(int value) {
 
 // A calm bar: how much of the strike budget is used. No reading required,
 // which is the whole point while the car is moving.
+//
+// Three rows tall for the used portion and two for the empty track. A single
+// row of 13 pixels is hard to see at a glance in daylight, and at zero strikes
+// that is the entire display - easy to mistake for a dead matrix.
 void drawBar(int used, int total) {
   int filled = (total <= 0) ? 0 : (used * COLS) / total;
   for (int c = 0; c < COLS; c++) {
-    setPixel(3, c);  // the empty track
+    setPixel(3, c);  // the track, always present so the display is never blank
+    setPixel(4, c);
     if (c < filled) {
       setPixel(2, c);  // thicken what is used
-      setPixel(4, c);
+      setPixel(5, c);
     }
   }
 }
@@ -239,7 +253,19 @@ void buzzCritical() {
 // -------------------------------------------------------------------- main
 void setup() {
   matrix.begin();
+
+  // Boot self-test: every LED on for a moment, exactly as the hardware test
+  // does it. If you see this flash, the matrix is wired and working and any
+  // later blankness is our drawing code, not the display. delay() is fine here
+  // - the bridge is not up yet.
+  for (int i = 0; i < PIXEL_COUNT; i++) {
+    frame[i] = PIXEL_ON;
+  }
+  matrix.draw(frame);
+  delay(600);
+
   clearFrame();
+  memcpy(lastFrame, frame, sizeof(frame));
   matrix.draw(frame);
 
   Modulino.begin();
@@ -280,19 +306,35 @@ void loop() {
 
   serviceBuzz();
 
-  clearFrame();
-  if (level >= 3) {
-    if (blinkOn) {
-      drawCross();
-    }
-  } else if (now < showCountUntil) {
-    drawNumber(strikes);
-  } else {
-    drawBar(strikes, MAX_STRIKES);
-  }
-  matrix.draw(frame);
+  // Rebuild the picture, but only PUSH it when it changed and at a sane rate.
+  //
+  // The first version of this called matrix.draw() and pixels.show() straight
+  // from loop(), which on this board is thousands of times a second. The strip
+  // survived it - a solid colour still looks solid - but the matrix showed
+  // nothing at all: the scan never settles on a frame if you keep replacing it.
+  // The working hardware test always had a delay() between draws, which is what
+  // hid the problem.
+  if (now - lastDrawAt >= DRAW_INTERVAL_MS) {
+    lastDrawAt = now;
 
-  updatePixels(level);
+    clearFrame();
+    if (level >= 3) {
+      if (blinkOn) {
+        drawCross();
+      }
+    } else if (now < showCountUntil) {
+      drawNumber(strikes);
+    } else {
+      drawBar(strikes, MAX_STRIKES);
+    }
+
+    if (memcmp(frame, lastFrame, sizeof(frame)) != 0) {
+      memcpy(lastFrame, frame, sizeof(frame));
+      matrix.draw(frame);
+    }
+
+    updatePixels(level);
+  }
 }
 
 // Called from the Linux side via the Arduino Router Bridge.

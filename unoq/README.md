@@ -222,3 +222,19 @@ product when the hardware is not plugged in.
 | `set_alert_level(level)` | 0-3, edge triggered on the board |
 | `reset_drive()` | clears the strike count |
 | `mcu_ping()` | the only call that waits for a reply, so it proves the **sketch** is running, not just the router |
+
+## If the matrix is blank but the strip and motor work
+
+That combination points at draw rate, not wiring. `alert_sketch.ino` used to call
+`matrix.draw()` straight from `loop()` — thousands of times a second. The Pixels
+strip survives that (a solid colour still looks solid) but the matrix scan never
+settles on a frame, so it shows nothing at all.
+
+`hardware_test.ino` always has a `delay()` between draws, which is exactly why it
+works and hid the problem.
+
+The sketch now redraws at ~30 fps and only when the picture actually changed.
+**If you ever add a new display call, throttle it the same way.**
+
+There is also a boot self-test: every LED lights for 600 ms at startup. See that
+flash and the matrix is fine — anything blank afterwards is our drawing code.
