@@ -250,3 +250,40 @@ def test_missing_frames_do_not_break_the_build():
     review = fixtures.review("fail", frames=[])
     (event,) = [e for e in review["events"] if e["status"] == "scored"]
     assert event["screenshot"] is None
+
+
+def test_a_confirmed_red_light_actually_reaches_the_driver():
+    """Found on the real clip: a confirmed red light gave no warning at all.
+
+    Both red-light runs on IMG_9830 were corroborated only by their own last
+    sample, so `detected_at` equalled `evidence_end` and the level span was
+    zero-length. A genuine detection reached the driver as nothing. The warning
+    now runs one sampling interval past the last sighting, which is also the
+    honest reading: we only look every few seconds.
+    """
+    samples = fixtures.samples(
+        [{}, {"traffic_light": "red", "light_is_for_our_lane": True},
+         {"traffic_light": "red", "light_is_for_our_lane": True}, {}, {}]
+    )
+    review = build_review(
+        samples=samples,
+        readings=fixtures.readings(20.0),
+        drive=dict(fixtures.DRIVE_META, duration_s=20.0),
+        processing=dict(fixtures.PROCESSING),
+        settings=dict(fixtures.SETTINGS),
+        frames=[],
+    )
+    (event,) = [e for e in review["events"] if e["kind"] == "red_light_ahead"]
+    assert event["detected_at"] == event["evidence_end"] == 6.0
+
+    def level_at(t):
+        current = 0
+        for at, level, _kind in review["levels"]:
+            if at <= t:
+                current = level
+        return current
+
+    assert level_at(5.9) == 0          # not known yet
+    assert level_at(6.0) == 1          # the second sample corroborates it
+    assert level_at(8.9) == 1          # held for one sampling interval
+    assert level_at(9.1) == 0          # and then released

@@ -18,13 +18,13 @@
     "real_time_ratio": null,
     "calls": 7,
     "failed": 0,
+    "first_call_s": null,
     "median_s": null,
     "p95_s": null,
     "min_s": null,
     "max_s": null,
     "replayed": true,
-    "replay_note": "Scene labels replayed from a recorded local run of qualcomm/Qwen3-VL-4B-Instruct:W4A16. GenieX was not contacted for this build. The motion track was recomputed from the video just now.",
-    "first_call_s": null
+    "replay_note": "Scene labels replayed from a recorded local run of qualcomm/Qwen3-VL-4B-Instruct:W4A16. GenieX was not contacted for this build. The motion track was recomputed from the video just now."
   },
   "settings": {
     "vision_interval_s": 3.0,
@@ -50,7 +50,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": "demo_frames_rolling/frame_000_05s.jpg",
+      "frame": "frames/frame_000_05s.jpg",
       "confirmed": {
         "stop_sign": true,
         "traffic_light": "none",
@@ -74,7 +74,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": "demo_frames_rolling/frame_003_05s.jpg",
+      "frame": "frames/frame_003_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -98,7 +98,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": "demo_frames_rolling/frame_006_05s.jpg",
+      "frame": "frames/frame_006_05s.jpg",
       "confirmed": {
         "stop_sign": true,
         "traffic_light": "none",
@@ -122,7 +122,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": "demo_frames_rolling/frame_009_05s.jpg",
+      "frame": "frames/frame_009_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -146,7 +146,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": "demo_frames_rolling/frame_012_05s.jpg",
+      "frame": "frames/frame_012_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -170,7 +170,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": "demo_frames_rolling/frame_015_05s.jpg",
+      "frame": "frames/frame_015_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -194,7 +194,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": "demo_frames_rolling/frame_018_05s.jpg",
+      "frame": "frames/frame_018_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -209,31 +209,31 @@
   "frames": [
     {
       "t": 0.05,
-      "path": "demo_frames_rolling/frame_000_05s.jpg"
+      "path": "frames/frame_000_05s.jpg"
     },
     {
       "t": 3.05,
-      "path": "demo_frames_rolling/frame_003_05s.jpg"
+      "path": "frames/frame_003_05s.jpg"
     },
     {
       "t": 6.05,
-      "path": "demo_frames_rolling/frame_006_05s.jpg"
+      "path": "frames/frame_006_05s.jpg"
     },
     {
       "t": 9.05,
-      "path": "demo_frames_rolling/frame_009_05s.jpg"
+      "path": "frames/frame_009_05s.jpg"
     },
     {
       "t": 12.05,
-      "path": "demo_frames_rolling/frame_012_05s.jpg"
+      "path": "frames/frame_012_05s.jpg"
     },
     {
       "t": 15.05,
-      "path": "demo_frames_rolling/frame_015_05s.jpg"
+      "path": "frames/frame_015_05s.jpg"
     },
     {
       "t": 18.05,
-      "path": "demo_frames_rolling/frame_018_05s.jpg"
+      "path": "frames/frame_018_05s.jpg"
     }
   ],
   "rejected": [

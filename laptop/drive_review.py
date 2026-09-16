@@ -548,7 +548,7 @@ def build_events(samples, stops, verdicts, frames, spacing=3.0):
 
 
 # -------------------------------------------------------------- level track
-def level_spans(events, verdicts, critical_hold_s=CRITICAL_HOLD_S):
+def level_spans(events, verdicts, critical_hold_s=CRITICAL_HOLD_S, spacing=3.0):
     """(start, end, level, type) spans the hardware should be in.
 
     A heads-up runs from the moment we could honestly say something was there
@@ -577,14 +577,19 @@ def level_spans(events, verdicts, critical_hold_s=CRITICAL_HOLD_S):
     for e in events:
         if e["kind"] in ("stop_sign_approach",) or not e.get("hardware"):
             continue
-        spans.append(
-            (
-                e["detected_at"],
-                e["evidence_end"],
-                e["hardware"]["level"],
-                e["hardware"]["type"],
-            )
-        )
+        # A warning runs from when we could know until one sampling interval
+        # past the last sighting: we only look every few seconds, so a red
+        # light seen at 18s is still there at 19s unless something says
+        # otherwise.
+        #
+        # Without that trailing interval a two-sample run collapses to nothing.
+        # On the real clip both confirmed red lights were corroborated only by
+        # their own last sample, so detected_at equalled evidence_end and the
+        # span was zero-length - a genuine confirmed red light that reached the
+        # driver as no warning at all.
+        start = e["detected_at"]
+        end = max(e["evidence_end"], start) + spacing
+        spans.append((start, end, e["hardware"]["level"], e["hardware"]["type"]))
 
     return [s for s in spans if s[1] > s[0]]
 
@@ -720,12 +725,23 @@ def coverage():
     ]
 
 
-def limitations():
+def limitations(processing=None, settings=None):
+    ratio = (processing or {}).get("real_time_ratio")
+    interval = (settings or {}).get("vision_interval_s") or 3.0
+    pace = ""
+    if ratio:
+        # Worth saying out loud rather than leaving a judge to work it out from
+        # the metrics panel: at this sampling rate the analysis is near real
+        # time but not faster than it, so this is review, not a live warning.
+        pace = (
+            f" This run analysed at {ratio}x real time, so it is review speed, "
+            "not a live warning system."
+        )
     return [
         NO_SPEED_FEED,
         "Post-drive analysis, not live detection. Events are replayed against "
         "the recording in sync; the live path would carry a confirmation delay "
-        "of about one sampling interval.",
+        f"of about one sampling interval ({interval:g}s).{pace}",
         "The vision model samples roughly every 3 seconds, so anything shorter "
         "than that can fall between samples.",
         "Every finding is reported as possible. This is coaching feedback, not "
@@ -770,7 +786,7 @@ def build_review(
         approaches, stops, settings["window_after_s"], settings["full_stop_s"]
     )
     events = build_events(samples, stops, verdicts, frames, spacing)
-    spans = level_spans(events, verdicts, settings["critical_hold_s"])
+    spans = level_spans(events, verdicts, settings["critical_hold_s"], spacing)
     track = build_level_track(spans, drive["duration_s"])
 
     return {
@@ -804,5 +820,5 @@ def build_review(
         "events": events,
         "levels": track,
         "outcome": build_outcome(events),
-        "limitations": limitations(),
+        "limitations": limitations(processing, settings),
     }

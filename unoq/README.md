@@ -12,10 +12,9 @@ laptop  --MCP over USB-->  mcp_server.py  --Bridge-->  alert_sketch.ino
                                          Modulino Vibro  (0x70) --+
 ```
 
-**Start at [MCP over USB](#mcp-over-usb-no-network-needed) at the bottom — that
-is the path that works.** Sections 2 to 4 below describe an earlier HTTP-over-
-Wi-Fi design and are kept only for the level table and the troubleshooting;
-`wlan0` on this board is down, so that path cannot work as written.
+There is one transport and it is USB. The earlier HTTP-over-Wi-Fi design has
+been moved to [`archive/`](../archive/README.md) with the reasons it lost;
+nothing in the product imports it.
 
 ## 0. Plug in the Modulinos
 
@@ -62,7 +61,8 @@ It is also the API reference — `alert_sketch.ino` is written to match its call
 exactly. The one thing it does that the alert sketch must never do is use
 blocking `delay()`, which would stall the router bridge.
 
-The sketch registers two functions, `alert(int level)` and `reset()`:
+The sketch registers three functions: `alert(int level)`, `reset()` and
+`mcu_ping()`.
 
 | level | meaning | strip (8 RGB) | vibration | matrix |
 |---|---|---|---|---|
@@ -70,6 +70,12 @@ The sketch registers two functions, `alert(int level)` and `reset()`:
 | 1 | heads up | **all amber, 1.2Hz pulse** | one `GENTLE` tap | **octagon** |
 | 2 | minor mistake | +1 red | one `MEDIUM` pulse | count for 2s |
 | 3 | critical mistake | all flash red, 4Hz | `GENTLE`→`INTENSE`→`MAXIMUM` | big X |
+
+**Level 2 is implemented but nothing in the product sends it.** A short-but-
+complete stop is legal, so it is coaching feedback and must not count as an
+error, and following distance is experimental and unscored. `python
+laptop/test_signals.py` is how you see level 2. Saying that out loud beats
+inventing a strike so the counter moves on stage.
 
 **The octagon, not the X, for a stop sign.** The X means a critical error. Using
 it for merely *seeing* a sign would tell anyone watching that the system flagged
@@ -108,23 +114,10 @@ idea; a short confirmation right after the event is not.
 **Nothing blocks.** `delay()` would stall the bridge and make the board miss the
 next alert, so every animation runs off `millis()` and the buzz is queued.
 
-## 2. Set up the Linux side
+## 2. Quickest check that the chain is alive
 
-> **Superseded.** This section used to say `pip3 install msgpack
-> --break-system-packages` and then start `alert_listener.py` on a network
-> port. Neither works on this board: there is no pip, and `wlan0` is down so
-> there is no address to connect to. `arduino_bridge.py` now encodes
-> MessagePack itself and needs nothing installed, and the laptop reaches the
-> board over USB. See [MCP over USB](#mcp-over-usb-no-network-needed).
-
-## 3. Find the board's IP address
-
-> **Superseded.** `hostname -I` returns only `172.17.0.1`, which is docker's
-> bridge and `linkdown` — not an address the laptop can use. USB instead.
-
-## 4. Test from the laptop
-
-Quickest check that the whole chain is alive, straight over USB:
+Straight over USB, no MCP server and no Wi-Fi — just the sketch deployed and the
+cable in:
 
 ```bash
 adb shell 'cd /home/arduino/topteam && python3 -c "
@@ -134,8 +127,12 @@ b.notify(\"reset\"); b.notify(\"alert\", 2)
 b.close()"'
 ```
 
-One buzz, a red LED, and `1` on the matrix. This needs no MCP server and no
-Wi-Fi — just the sketch deployed and the USB cable in.
+One buzz, a red LED, and `1` on the matrix.
+
+`arduino_bridge.py` needs nothing installed. It encodes the three MessagePack
+type tags the router RPC uses in about twenty lines, precisely because this
+board has no pip, no internet and no way to install `msgpack`. **Do not
+reintroduce that dependency.**
 
 ## Troubleshooting
 
@@ -143,7 +140,7 @@ Wi-Fi — just the sketch deployed and the USB cable in.
 isn't running. On the UNO Q: `systemctl status arduino-router`, and restart it
 with `sudo systemctl restart arduino-router`.
 
-**Listener starts but nothing moves** — the sketch isn't deployed, or the
+**Server starts but nothing moves** — the sketch isn't deployed, or the
 function name doesn't match. It must be exactly `alert` on both sides. Check the
 App Lab monitor for the `alert level -> N  strikes: N` lines the sketch prints.
 
@@ -237,7 +234,7 @@ product when the hardware is not plugged in.
 |---|---|
 | `set_alert_level(level)` | 0-3, edge triggered on the board |
 | `reset_drive()` | clears the strike count |
-| `mcu_ping()` | the only call that waits for a reply, so it proves the **sketch** is running, not just the router |
+| `mcu_ping()` | the only call that waits for a reply, so it proves the **sketch** is running, not just the router. The review page shows its answer in the hardware panel. |
 
 ## If the matrix is blank but the strip and motor work
 

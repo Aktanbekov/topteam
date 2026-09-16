@@ -50,7 +50,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": null,
+      "frame": "frames/frame_000_05s.jpg",
       "confirmed": {
         "stop_sign": true,
         "traffic_light": "none",
@@ -74,7 +74,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": null,
+      "frame": "frames/frame_003_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -98,7 +98,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": null,
+      "frame": "frames/frame_006_05s.jpg",
       "confirmed": {
         "stop_sign": true,
         "traffic_light": "none",
@@ -122,7 +122,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": null,
+      "frame": "frames/frame_009_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -146,7 +146,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": null,
+      "frame": "frames/frame_012_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -170,7 +170,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": null,
+      "frame": "frames/frame_015_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -194,7 +194,7 @@
         "car_ahead_close": false
       },
       "error": null,
-      "frame": null,
+      "frame": "frames/frame_018_05s.jpg",
       "confirmed": {
         "stop_sign": false,
         "traffic_light": "none",
@@ -206,7 +206,36 @@
       "known_at": {}
     }
   ],
-  "frames": [],
+  "frames": [
+    {
+      "t": 0.05,
+      "path": "frames/frame_000_05s.jpg"
+    },
+    {
+      "t": 3.05,
+      "path": "frames/frame_003_05s.jpg"
+    },
+    {
+      "t": 6.05,
+      "path": "frames/frame_006_05s.jpg"
+    },
+    {
+      "t": 9.05,
+      "path": "frames/frame_009_05s.jpg"
+    },
+    {
+      "t": 12.05,
+      "path": "frames/frame_012_05s.jpg"
+    },
+    {
+      "t": 15.05,
+      "path": "frames/frame_015_05s.jpg"
+    },
+    {
+      "t": 18.05,
+      "path": "frames/frame_018_05s.jpg"
+    }
+  ],
   "rejected": [
     {
       "t": 6.05,

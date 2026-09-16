@@ -117,16 +117,60 @@ our bytes.
 
 ## Architecture
 ```
-LAPTOP                                     UNO Q
-dashcam video -> OpenCV                    Python listener (Linux)
-  fast layer: ego motion (every frame)         |
-  smart layer: Qwen3-VL every 1-2 s  --HTTP-->  Bridge.call("alert", level)
-    -> JSON: {stop_sign, traffic_light,         |
-             light_is_for_our_lane,            Sketch (C++): LEDs, vibration, matrix
-             stop_line_visible, pedestrian}
-  state machine combines both over time
-  end of drive -> Qwen3-4B writes report -> web page
+LAPTOP                                          UNO Q
+dashcam video -> PyAV decode                    mcp_server.py (Linux)
+  fast layer: ego motion (every frame, numpy)       |
+  smart layer: Qwen3-VL every ~3 s                  |
+    -> JSON: {stop_sign, traffic_light,             |
+             light_is_for_our_lane,                 |
+             stop_line_visible, pedestrian}         |
+  scene_filter: drop single-sample claims           |
+  drive_review: state machine -> review.json        |
+      |                                             |
+      +-> player.html  --POST /api/alert-->  serve_player.py
+      +-> report.html                          --MCP over USB/ADB-->
+      +-> level track (exact timestamps)     Bridge.notify("alert", level)
+                                                    |
+                                       Sketch (C++): LEDs, vibration, matrix
 ```
+
+**`output/review.json` is the single source of truth.** The player, the report
+and the hardware all render it and nothing else. They used to each re-interpret
+the raw samples, which is precisely how they came to disagree - see the three
+bugs listed at the top of `laptop/drive_review.py`.
+
+`laptop/config.py` holds every shared default, and the settings travel inside
+review.json so a report can always say what produced it.
+
+## Invariants - break these and the product is dishonest
+
+Four rules that everything else is arranged around. They have unit tests; if you change
+behaviour here, change the test first and be sure you mean it.
+
+1. **Nothing signals a failure before `decision_at`.** Every event carries two timestamps:
+   `detected_at` (when we first had grounds to say anything) and `decision_at` (when the
+   outcome was settled). On a failed stop-sign approach they are ten seconds apart. The
+   old build fired CRITICAL from the moment the sign left the frame - announcing the
+   mistake before the driver had the chance to make it.
+   Test: `test_a_failure_is_not_decided_before_its_deadline`.
+
+2. **Only a validated approach reaches the hardware.** `stop_sign` is deliberately
+   excluded from `scene_filter` confirmation, so `confirmed["stop_sign"]` is always the
+   raw reading. Nothing may light an LED or score an error off that field - it must go
+   through `sign_approaches`, which needs two sightings.
+   Test: `test_an_unvalidated_sighting_never_reaches_the_hardware`.
+
+3. **A brief stop is never an error.** California asks for a complete stop and puts no
+   number on it. The 3s target is ours, so it is coaching and must not move the strike
+   count. Test: `test_a_brief_stop_is_a_coaching_note_and_never_a_strike`.
+
+4. **No DMV verdict, ever.** Not "pass", not "fail", not "you failed". We are reading a
+   forward camera with no speed feed. Test: `test_no_official_dmv_claim_anywhere` greps
+   the whole serialised review.
+
+Two more that are not tested but matter just as much: a **replayed** run is never shown as
+a live one, and the compute unit is reported as **requested**, never as verified - the
+OpenAI-compatible API does not say which unit served a request.
 
 ## Two-layer detection (important)
 - The vision model takes seconds per frame, so it cannot check every frame.
@@ -136,9 +180,12 @@ dashcam video -> OpenCV                    Python listener (Linux)
 - **Measured 2026-09-15:** ~2.7 s per vision call on a 640x480 frame once the model is warm
   (~15 s on the very first call, which includes model load). So the smart layer realistically
   samples every 3 s, not the 1-2 s originally assumed. Budget for that lag in the state machine.
-- Neither layer is enough on its own. Mistake logic is a **state machine** combining both over time.
+- Neither layer is enough on its own. Mistake logic is a **state machine** combining both
+  over time. It lives in `laptop/drive_review.py`, does no I/O, and is unit tested without
+  a model, a video or a board anywhere near it.
 - **Never ask Qwen a judgement question** like "did the driver stop?". Ask it only what is visible in
-  this one frame. All timing and motion judgements come from OpenCV plus the state machine.
+  this one frame. All timing and motion judgements come from the numpy motion layer plus
+  the state machine in `laptop/drive_review.py`.
 
 ## The model says yes too easily — and what fixed it
 
@@ -199,7 +246,7 @@ before trusting a prompt change on new footage.
 
 ### 1. Possible incomplete stop (rolling stop) — feasible
 - Qwen identifies that a stop sign is present and being approached.
-- OpenCV measures ego motion continuously, on every frame.
+- `laptop/ego_motion.py` measures ego motion continuously, on every frame (numpy, no OpenCV).
 - A state machine records the **minimum** motion during the approach window.
 - Motion stays low enough for ~0.5-1 s -> record a genuine stop.
 - Car passes the intersection without ever entering that low-motion state -> possible rolling stop.
@@ -437,6 +484,16 @@ rolling stop or red-light crossing before anything else.
   The signal smoke test deliberately uses only the built-in LED so no wiring is needed.
 
 ## Answered
+- **What counts as "low motion" for a stop:** calibrated on IMG_9830. Stopped tops out at
+  0.24, moving starts at 0.31, threshold 0.25. The gap is only 25% - do not tighten it
+  without re-running `laptop/test_video.py` on the footage in question.
+- **UNO Q IP address:** not needed and deliberately not used. Everything goes over
+  USB/ADB; `wlan0` is one more thing to fail on stage.
+- **External LEDs and vibration motor wiring:** none needed. Both Modulinos daisy-chain on
+  the QWIIC connector - no resistors, no transistor, the Vibro has its own MOSFET.
+- **Where levels 2 and 3 come from:** level 3 from a failed stop-sign approach, at the
+  deadline. Level 2 from nothing - a brief stop is legal and must not be counted as an
+  error, and following distance is experimental. `laptop/test_signals.py` exercises it.
 - **Sending images to GenieX:** the OpenAI-compatible `/v1/chat/completions` endpoint accepts
   `content: [{"type": "text", ...}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}]`.
   Verified working, and Qwen3-VL returned clean parseable JSON with no markdown fence.
