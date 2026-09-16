@@ -319,7 +319,7 @@ unoq/
   arduino_bridge.py  MessagePack-RPC in ~20 lines, no dependencies
   alert_sketch/      the sketch: matrix, Pixels, Vibro, nothing blocking
 report/              the two HTML templates
-tests/               108 tests, no GenieX and no board required
+tests/               117 tests, no GenieX and no board required
 docs/                demo script, test plan, submission checklist
 archive/             the superseded HTTP-over-Wi-Fi transport, and why
 ```

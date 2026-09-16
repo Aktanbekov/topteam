@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import re
+import socket
 import sys
 import webbrowser
 from functools import partial
@@ -203,6 +204,13 @@ class RangeHandler(SimpleHTTPRequestHandler):
         pass
 
 
+def port_in_use(port, host="127.0.0.1", timeout=0.4):
+    """True if something is already listening. See the note in main()."""
+    with socket.socket() as probe:
+        probe.settimeout(timeout)
+        return probe.connect_ex((host, port)) == 0
+
+
 def board_status():
     """What the page's hardware panel shows. Always answers, board or no board."""
     if REPLAY is None or BOARD is None:
@@ -270,11 +278,23 @@ def main():
 
     handler = partial(RangeHandler, directory=str(args.root))
 
-    # A leftover server from an earlier run holds the port and binding fails
-    # with a bare traceback, which reads like a bug in this script. Step to the
-    # next free port instead and say so.
+    # A leftover server from an earlier run holds the port, so step to the next
+    # free one and say so rather than dying with a bare traceback.
+    #
+    # Binding is NOT enough to detect that on Windows. ThreadingHTTPServer sets
+    # allow_reuse_address, which is SO_REUSEADDR, and Windows lets a second
+    # socket bind an address another socket is already listening on - so the
+    # bind succeeds, three servers end up on port 8000, and requests are shared
+    # out between them at random. That is how a stale server from an earlier
+    # session came to answer /api/status with a 404 while the new one sat there
+    # working perfectly: the page decided there was no hardware and the board
+    # never moved.
+    #
+    # So ask first whether anything is already listening, and only then bind.
     server = None
     for port in range(args.port, args.port + 10):
+        if port_in_use(port):
+            continue
         try:
             server = ThreadingHTTPServer(("127.0.0.1", port), handler)
         except OSError:

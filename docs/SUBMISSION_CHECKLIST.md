@@ -30,7 +30,7 @@ to cut, not something to rush.
 
 ## Code and repo
 
-- [ ] `python -m pytest` — 108 pass
+- [ ] `python -m pytest` — 117 pass
 - [ ] `python -m compileall -q laptop tools unoq` — clean
 - [ ] `git status` — only intended changes
 - [ ] No footage, no `output/`, no local machine paths, no secrets committed

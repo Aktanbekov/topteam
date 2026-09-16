@@ -167,7 +167,7 @@ python -m pytest
 ./run.sh --demo fail --unoq
 ```
 
-- [ ] 108 tests pass
+- [ ] 117 tests pass
 - [ ] The header shows **UNO Q: connected** and the sketch panel says *answering*
 - [ ] Press play: amber tap at 6s, red + three buzzes at 16s
 - [ ] Press **Replay drive from the start** — it all fires again

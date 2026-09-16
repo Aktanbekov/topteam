@@ -8,7 +8,7 @@ board. Only the things that genuinely need hardware need hardware.
 python -m pytest
 ```
 
-108 tests, ~0.3s, no GenieX, no UNO Q, no video file.
+117 tests, well under a second, no GenieX, no UNO Q, no video file.
 
 ---
 
@@ -21,6 +21,7 @@ python -m pytest
 | `test_review_schema.py` | the shape everything downstream reads, and the promises it makes |
 | `test_hardware_protocol.py` | hand-rolled MessagePack, and seek-safe replay |
 | `test_report.py` | script-safe embedding, deterministic prose, narrative guard |
+| `test_serve_api.py` | relay input validation, and the Windows port trap |
 
 ### The tests that exist because something was wrong
 
@@ -45,6 +46,13 @@ python -m pytest
   the user and lands inside `<script>`. `json.dumps` does not escape `</script>`.
 - **`test_a_narrative_that_claims_a_violation_is_rejected`** — asked to summarise
   "possible incomplete stop", a text model reaches for "you ran a stop sign".
+- **`test_a_confirmed_red_light_actually_reaches_the_driver`** — both red-light
+  runs on the real clip were corroborated only by their own last sample, so the
+  level span was zero-length and a genuine detection produced no warning at all.
+- **`test_port_in_use_sees_a_listening_socket`** — Windows lets a second socket
+  bind an address another is already listening on, so three stale servers ended
+  up sharing port 8000 and one of them answered `/api/status` with a 404. The
+  page concluded there was no hardware while the board sat there connected.
 
 ### Fixtures
 
@@ -136,10 +144,17 @@ Then the real path:
 
 ### Verified on the board (2026-09-16)
 
-- MCP over USB/ADB, `mcu_ping` answering.
-- Level 1 and level 3 delivered, in order, once each.
-- Replaying the same transitions after a rewind returned `skipped` twice and
-  sent nothing — the seek-safety rule, on real hardware.
+Through the full one-command path, `./run.sh --demo fail --unoq`, not a mock:
+
+- MCP over USB/ADB up, `mcu_ping` answering.
+- Playing from 0: `reset`, then level 1 at 6s, then level 3 at 16s — three
+  transitions, in order, once each.
+- Scrubbing back to 5s and playing forward through 16s again: `events_sent`
+  stayed at 3 and `events_skipped` went to 3. **The motor did not buzz again
+  and the strike counter did not move.**
+- The hardware panel showed "3 sent, 3 skipped on rewind" and
+  "answering (mcu_ping)" throughout.
+- Ctrl-C left the board on level 0.
 
 ### Not verified, and why
 
