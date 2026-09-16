@@ -290,6 +290,45 @@ graph.addEventListener("click", e => {
   video.currentTime = ((e.clientX - r.left) / r.width) * DATA.meta.duration;
 });
 
+// --- the real hardware ----------------------------------------------------
+// The page posts to its own origin; serve_player.py relays to the UNO Q's MCP
+// server over the USB tunnel. A browser cannot speak MCP and cannot see the
+// tunnel, so it has to go through the server that served this page.
+//
+// Only changes are sent. timeupdate fires ~4x a second and the level is the
+// same almost every time; without this the USB link would carry hundreds of
+// identical messages a minute.
+//
+// Everything here fails silently on purpose. No board, no server, opened
+// straight from file:// - the review page must still work. It is the whole
+// product when the hardware is not plugged in.
+let hwLevel = null;
+let hwOffline = false;
+
+function postHW(path, body) {
+  if (hwOffline) return Promise.resolve(null);
+  return fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  }).catch(() => { hwOffline = true; return null; });
+}
+
+function sendLevel(level) {
+  if (level === hwLevel) return;
+  hwLevel = level;
+  postHW("/api/alert", { level });
+}
+
+// A fresh drive: clear the strike count on the board, and forget what we last
+// sent so the first level of the run is transmitted even if it is the same.
+function resetHW() {
+  hwLevel = null;
+  postHW("/api/reset");
+}
+video.addEventListener("play", () => { if (video.currentTime < 0.5) resetHW(); });
+video.addEventListener("seeking", () => { hwLevel = null; });
+
 // --- live update ----------------------------------------------------------
 const chipsEl = document.getElementById("chips");
 const led = document.getElementById("led");
@@ -343,6 +382,7 @@ function update() {
   led.className = "led l" + level;
   document.getElementById("levelName").textContent = `Level ${level} — ${LEVELS[level][0]}`;
   document.getElementById("levelSub").textContent = LEVELS[level][1];
+  sendLevel(level);
 
   let activeIdx = -1;
   DATA.events.forEach((e, i) => { if (e.t <= t + 0.25) activeIdx = i; });

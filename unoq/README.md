@@ -158,3 +158,69 @@ the UNO R4's 12x8 = 96 pixels, one word short for this board's 8x13 = 104.
 **Laptop can't reach the board** — both devices must be on the same network.
 Check with `ping <unoq-ip>` from the laptop. The listener binds `0.0.0.0`, so it
 accepts connections from anywhere on the network, not just localhost.
+
+## MCP over USB (no network needed)
+
+`wlan0` on this board is down, so the laptop cannot reach it by IP at all —
+`hostname -I` returns only docker's `172.17.0.1`. Everything goes over USB
+instead, which is more robust for a demo anyway: no Wi-Fi to fail on stage.
+
+### One-time, on the board
+
+Needs internet on the board just for the install. Bring up Wi-Fi:
+
+```bash
+nmcli dev wifi connect "<SSID>" password "<password>"
+```
+
+```bash
+sudo apt update && sudo apt install -y python3-pip && pip3 install fastmcp --break-system-packages
+```
+
+`arduino_bridge.py` needs nothing installed — it encodes MessagePack itself,
+precisely because the board could not install `msgpack` either.
+
+### Every session
+
+Push the board-side files and start the MCP server:
+
+```bash
+adb push unoq/arduino_bridge.py unoq/mcp_server.py /home/arduino/topteam/
+```
+
+```bash
+adb shell 'cd /home/arduino/topteam && python3 mcp_server.py'
+```
+
+Then on the laptop, open the tunnel:
+
+```bash
+adb forward tcp:3001 tcp:3001
+```
+
+`adb` ships with App Lab at
+`%LOCALAPPDATA%\Arduino15\packages\arduino\tools\adb\32.0.0\adb.exe`. In Git
+Bash, prefix commands with `MSYS_NO_PATHCONV=1` or it rewrites `/home/arduino`
+into a Windows path and the push fails with `secure_mkdirs failed`.
+
+### Drive the hardware from the review player
+
+```bash
+python tools/serve_player.py --open --unoq
+```
+
+As the video plays, the page posts each level change to its own origin and the
+server relays it over the tunnel. The browser cannot speak MCP or see the
+tunnel, so the relay has to live on the laptop side.
+
+Without `--unoq` the player behaves exactly as before. With it but no board,
+you get one warning and the page still works — the review page is the whole
+product when the hardware is not plugged in.
+
+### The three MCP tools
+
+| tool | what it does |
+|---|---|
+| `set_alert_level(level)` | 0-3, edge triggered on the board |
+| `reset_drive()` | clears the strike count |
+| `mcu_ping()` | the only call that waits for a reply, so it proves the **sketch** is running, not just the router |

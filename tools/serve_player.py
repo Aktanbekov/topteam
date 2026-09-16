@@ -14,14 +14,24 @@ Everything stays on the laptop; nothing is exposed beyond localhost.
 """
 
 import argparse
+import json
 import os
 import re
+import sys
 import webbrowser
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "laptop"))
+
 RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
+
+# Set by main() when --unoq is given. The page posts here as the video plays,
+# and we forward to the board's MCP server over the USB tunnel. The browser
+# cannot reach the board itself - it has no way to speak MCP, and the tunnel
+# lives on this machine - so the page talks to its own origin and we relay.
+SENDER = None
 
 
 class RangeHandler(SimpleHTTPRequestHandler):
@@ -94,8 +104,67 @@ class RangeHandler(SimpleHTTPRequestHandler):
                 break
             remaining -= len(chunk)
 
+    # ------------------------------------------------------- hardware relay
+    def _json(self, status, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        route = self.path.split("?")[0]
+        if route not in ("/api/alert", "/api/reset"):
+            self._json(404, {"error": "POST /api/alert or /api/reset"})
+            return
+
+        if SENDER is None:
+            # Not an error: the player works perfectly well with no board, and
+            # the page should carry on rather than pop up a failure.
+            self._json(200, {"ok": True, "hardware": False})
+            return
+
+        if route == "/api/reset":
+            self._json(200, {"ok": SENDER.reset(), "hardware": True})
+            return
+
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            level = json.loads(self.rfile.read(length) or b"{}").get("level")
+            level = int(level)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            self._json(400, {"error": f"bad level: {exc}"})
+            return
+        if level not in (0, 1, 2, 3):
+            self._json(400, {"error": f"level must be 0-3, got {level}"})
+            return
+
+        sent = SENDER.send(level)
+        if sent:
+            print(f"  level {level} -> board", flush=True)
+        self._json(200, {"ok": True, "hardware": True, "sent": sent, "level": level})
+
     def log_message(self, fmt, *args):
         pass
+
+
+def connect_board(url):
+    """Open the MCP session. Returns a LevelSender, or None if unreachable."""
+    from unoq_mcp import LevelSender, UnoQ
+
+    unoq = UnoQ(url=url) if url else UnoQ()
+    if not unoq.connect():
+        print("\n  no UNO Q - the player still works, the hardware just sits idle")
+        for line in unoq.last_error.splitlines():
+            print(f"    {line}")
+        return None
+
+    sender = LevelSender(unoq)
+    sender.reset()
+    print(f"  UNO Q connected at {unoq.url}")
+    print(f"  sketch answering: {unoq.ping()}")
+    return sender
 
 
 def main():
@@ -108,7 +177,20 @@ def main():
         help="directory to serve (default: the project root)",
     )
     parser.add_argument("--open", action="store_true", help="open a browser")
+    parser.add_argument(
+        "--unoq",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="URL",
+        help="drive the UNO Q as the video plays. Needs the USB tunnel first: "
+        "adb forward tcp:3001 tcp:3001",
+    )
     args = parser.parse_args()
+
+    global SENDER
+    if args.unoq is not None:
+        SENDER = connect_board(args.unoq or None)
 
     handler = partial(RangeHandler, directory=str(args.root))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)

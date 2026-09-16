@@ -258,6 +258,7 @@ void setup() {
   Bridge.begin();
   Bridge.provide("alert", alert);
   Bridge.provide("reset", resetDrive);
+  Bridge.provide("mcu_ping", mcu_ping);
 
   Monitor.println("alert sketch ready - levels 0-3, reset() clears the count");
 }
@@ -313,6 +314,14 @@ void alert(int level) {
   Monitor.print(level);
   Monitor.print("  strikes: ");
   Monitor.println(strikes);
+}
+
+// Health check. Unlike alert() and resetDrive() this RETURNS something, so the
+// Linux side can use a bridge REQUEST and actually get an answer back. That
+// makes it the one call that proves the sketch is running - a notify only
+// proves the router accepted the bytes, not that anybody acted on them.
+const char* mcu_ping() {
+  return "pong";
 }
 
 // Call this at the start of a drive so the count does not carry over.
