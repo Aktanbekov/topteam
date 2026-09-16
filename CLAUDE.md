@@ -44,8 +44,13 @@ A second, driver-facing camera (laptop webcam) covers head checks.
   wheel and fail to build from source on this laptop. Verified 2026-09-15. Instead:
   - **PyAV** (`av`) decodes the dashcam video frame by frame — ffmpeg bindings, ARM64 wheel works.
     Tested 2026-09-15: `.mp4`, `.mov` and HEVC-in-`.mov` all decode to byte-identical results,
-    so **use whatever your camera or phone produces — no converting needed.** The container and
-    codec do not matter. What does matter is **rotation**: phone footage carries a rotation flag
+    so **for analysis, use whatever your camera or phone produces — no converting needed.**
+    **Browsers are a different story.** Chrome and Edge will not play a `.mov` even when the
+    video inside is ordinary H.264, so the review player cannot point at the original file.
+    `tools/make_player.py` handles this automatically: it rewraps the video as MP4 by stream
+    copy (seconds, no re-encoding, no quality loss) and points the page at that. HEVC sources
+    get re-encoded instead, which is slow — another reason to prefer H.264 when recording.
+    What also matters is **rotation**: phone footage carries a rotation flag
     that PyAV does not apply on decode, so frames can arrive sideways and confuse the vision
     model. Film in landscape, or pass `--rotate 90|180|270`.
   - **numpy** does the frame differencing / ego-motion maths.
