@@ -4,13 +4,18 @@ The three outputs the driver actually sees, driven by one alert level from the
 laptop.
 
 ```
-laptop  --HTTP-->  alert_listener.py  --Bridge.notify-->  alert_sketch.ino
-       (network)      (Linux side)        (Unix socket)       (MCU side)
-                                                                   |
-                                          built-in 8x13 matrix ----+
-                                          Modulino Pixels (0x6C) --+
-                                          Modulino Vibro  (0x70) --+
+laptop  --MCP over USB-->  mcp_server.py  --Bridge-->  alert_sketch.ino
+       (adb forward 3001)    (Linux side)  (Unix sock)     (MCU side)
+                                                                  |
+                                         built-in 8x13 matrix ----+
+                                         Modulino Pixels (0x6C) --+
+                                         Modulino Vibro  (0x70) --+
 ```
+
+**Start at [MCP over USB](#mcp-over-usb-no-network-needed) at the bottom — that
+is the path that works.** Sections 2 to 4 below describe an earlier HTTP-over-
+Wi-Fi design and are kept only for the level table and the troubleshooting;
+`wlan0` on this board is down, so that path cannot work as written.
 
 ## 0. Plug in the Modulinos
 
@@ -89,45 +94,32 @@ next alert, so every animation runs off `millis()` and the buzz is queued.
 
 ## 2. Set up the Linux side
 
-Open a terminal on the UNO Q (App Lab has one, or SSH in), then:
-
-```bash
-pip3 install msgpack --break-system-packages
-```
-
-Copy `arduino_bridge.py` and `alert_listener.py` onto the board, into the same
-folder, then start the listener:
-
-```bash
-python3 alert_listener.py
-```
-
-You should see `connected to arduino-router` and `listening on http://0.0.0.0:8080`.
+> **Superseded.** This section used to say `pip3 install msgpack
+> --break-system-packages` and then start `alert_listener.py` on a network
+> port. Neither works on this board: there is no pip, and `wlan0` is down so
+> there is no address to connect to. `arduino_bridge.py` now encodes
+> MessagePack itself and needs nothing installed, and the laptop reaches the
+> board over USB. See [MCP over USB](#mcp-over-usb-no-network-needed).
 
 ## 3. Find the board's IP address
 
-On the UNO Q:
-
-```bash
-hostname -I
-```
-
-Note the address — the laptop needs it.
+> **Superseded.** `hostname -I` returns only `172.17.0.1`, which is docker's
+> bridge and `linkdown` — not an address the laptop can use. USB instead.
 
 ## 4. Test from the laptop
 
-```bash
-python laptop\test_signals.py --host <unoq-ip>
-```
-
-It resets the counter, then walks levels 0 to 3, pausing 3 seconds on each and
-printing what each one should look like on all three outputs.
-
-To send a single level:
+Quickest check that the whole chain is alive, straight over USB:
 
 ```bash
-python laptop\alert_client.py 3 --host <unoq-ip>
+adb shell 'cd /home/arduino/topteam && python3 -c "
+from arduino_bridge import ArduinoBridge
+b = ArduinoBridge().connect()
+b.notify(\"reset\"); b.notify(\"alert\", 2)
+b.close()"'
 ```
+
+One buzz, a red LED, and `1` on the matrix. This needs no MCP server and no
+Wi-Fi — just the sketch deployed and the USB cable in.
 
 ## Troubleshooting
 
@@ -144,10 +136,11 @@ board first, then the Qwiic cables. If only one responds, the two may have been
 set to the same address; the Modulino library ships an `AddressChanger` example.
 
 **The matrix stays dark** — the sketch uses `matrix.draw(frame)` with a
-`uint8_t frame[104]` laid out as `frame[row * 13 + col]`, writing `0xFF` for a
-lit pixel. `draw()` goes straight to `matrixGrayscaleWrite()`, so the buffer is
-brightness, not on/off — hence `setGrayscaleBits(8)` in `setup()` and `0xFF`
-rather than `1`, which would be almost invisible.
+`uint8_t frame[104]` laid out as `frame[row * 13 + col]`, writing `1` for a lit
+pixel, exactly as `hardware_test.ino` does. `draw()` feeds
+`matrixGrayscaleWrite()`, so in principle the buffer is brightness rather than
+on/off — but `1` demonstrably lights a pixel on this board, so leave it alone.
+`setGrayscaleBits()` is the knob if you ever want real brightness levels.
 
 Deliberately **not** using the library's `loadPixels()` / `renderBitmap()`
 convenience path. It calls `loadPixelsToBuffer()` with a `uint32_t _frameHolder[3]`
@@ -155,9 +148,14 @@ convenience path. It calls `loadPixelsToBuffer()` with a `uint32_t _frameHolder[
 the UNO R4's 12x8 = 96 pixels, one word short for this board's 8x13 = 104.
 `draw()` avoids that code entirely.
 
-**Laptop can't reach the board** — both devices must be on the same network.
-Check with `ping <unoq-ip>` from the laptop. The listener binds `0.0.0.0`, so it
-accepts connections from anywhere on the network, not just localhost.
+**Laptop can't reach the board** — check `adb devices` first; it should list one
+device, not `unauthorized` or nothing. Then `adb forward --list` should show
+`tcp:3001 tcp:3001`. The forward does not survive unplugging the cable, so
+re-run it after a reconnect.
+
+**`secure_mkdirs failed: No such file or directory` on `adb push`** — Git Bash
+rewrote `/home/arduino/...` into `C:/Program Files/Git/home/...`. Prefix the
+command with `MSYS_NO_PATHCONV=1`.
 
 ## MCP over USB (no network needed)
 
