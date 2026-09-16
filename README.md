@@ -1,5 +1,9 @@
 # AI Driving Test Coach
 
+![Offline AI Driving Coach: a practice drive, the two detection layers, the hardware signal and the post-drive report](docs/banner.png)
+
+*Concept illustration, not a screenshot. The real review player is below.*
+
 **An offline coach for practice drives before the DMV road test. Your dashcam
 footage is understood by a vision model running on the Snapdragon X NPU, graded
 by deterministic temporal logic, felt through an Arduino UNO Q, and written up
