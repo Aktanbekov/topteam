@@ -12,12 +12,15 @@ timing and motion reasoning belongs to the state machine.
 import base64
 import io
 import json
+import statistics
+import time
 
 import requests
 from PIL import Image
 
-BASE_URL = "http://127.0.0.1:18181/v1"
-MODEL = "qualcomm/Qwen3-VL-4B-Instruct:W4A16"
+from config import GENIEX_URL as BASE_URL  # noqa: F401  (re-exported)
+from config import VISION_MODEL as MODEL  # noqa: F401  (re-exported)
+
 TIMEOUT_S = 180
 
 JSON_SHAPE = (
@@ -119,6 +122,10 @@ class SceneVision:
         self.jpeg_quality = jpeg_quality
         self.calls = 0
         self.failures = 0
+        # Wall-clock seconds per successful call. The review page reports the
+        # median and p95 from these rather than quoting the number in the
+        # brief - a measurement that comes from the run itself cannot go stale.
+        self.latencies = []
 
     def _data_url(self, rgb):
         buf = io.BytesIO()
@@ -151,6 +158,7 @@ class SceneVision:
             "temperature": 0,
         }
 
+        started = time.perf_counter()
         try:
             resp = requests.post(
                 f"{self.base_url}/chat/completions", json=payload, timeout=TIMEOUT_S
@@ -160,6 +168,7 @@ class SceneVision:
         except (requests.RequestException, KeyError, ValueError) as exc:
             self.failures += 1
             return dict(EMPTY_SCENE), f"request failed: {exc}"
+        self.latencies.append(time.perf_counter() - started)
 
         parsed = extract_json(reply)
         if parsed is None:
@@ -170,6 +179,46 @@ class SceneVision:
         scene = dict(EMPTY_SCENE)
         scene.update({k: v for k, v in parsed.items() if k in EMPTY_SCENE})
         return tidy(scene), None
+
+    def stats(self):
+        """Measured call latencies, for the review page's processing panel.
+
+        The FIRST call is reported separately and left out of the warm figures.
+        It carries the model load - measured at ~15s against ~3s warm - so
+        folding it into a median over a short run would be reporting a number
+        that describes nothing that happens again. Both are here: the cold
+        start is real and worth showing, it is just a different quantity.
+
+        Returns None where there is nothing to report rather than a zero: an
+        empty run should read as "not measured", not as "infinitely fast".
+        """
+        empty = {
+            "calls": self.calls,
+            "failed": self.failures,
+            "first_call_s": None,
+            "median_s": None,
+            "p95_s": None,
+            "min_s": None,
+            "max_s": None,
+        }
+        if not self.latencies:
+            return empty
+
+        empty["first_call_s"] = round(self.latencies[0], 2)
+        warm = sorted(self.latencies[1:])
+        if not warm:
+            return empty
+
+        # Nearest-rank p95. With a few dozen samples an interpolated percentile
+        # would be pretending to a precision we do not have.
+        p95 = warm[min(len(warm) - 1, int(round(0.95 * len(warm))) - 1)]
+        empty.update(
+            median_s=round(statistics.median(warm), 2),
+            p95_s=round(p95, 2),
+            min_s=round(warm[0], 2),
+            max_s=round(warm[-1], 2),
+        )
+        return empty
 
     def health(self):
         """True if the GenieX server answers."""

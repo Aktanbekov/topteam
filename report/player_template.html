@@ -3,94 +3,123 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Drive Review</title>
+<title>Drive Review — AI Driving Test Coach</title>
 <style>
   :root {
-    --bg: #0e1116;
+    --bg: #0d1117;
     --panel: #161b22;
     --panel-2: #1c232c;
     --line: #2a323d;
+    --line-soft: #222932;
     --text: #e6edf3;
     --dim: #8b949e;
+    --dimmer: #6e7681;
     --green: #3fb950;
     --amber: #d29922;
     --red: #f85149;
     --blue: #58a6ff;
+    --violet: #a371f7;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  header {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--line);
-    display: flex;
-    align-items: baseline;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  h1 { font-size: 16px; margin: 0; font-weight: 600; }
-  .meta { color: var(--dim); font-size: 13px; }
-  .verdicts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-  .verdict {
-    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
-    border: 1px solid transparent;
-  }
-  .verdict.pass { background: rgba(63,185,80,.14); color: var(--green); border-color: rgba(63,185,80,.35); }
-  .verdict.brief { background: rgba(210,153,34,.14); color: var(--amber); border-color: rgba(210,153,34,.35); }
-  .verdict.flag { background: rgba(248,81,73,.14); color: var(--red); border-color: rgba(248,81,73,.35); }
+  a { color: var(--blue); }
 
-  .wrap { padding: 20px; display: grid; gap: 16px; grid-template-columns: minmax(0,1fr) 320px; }
-  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  /* ------------------------------------------------- first viewport */
+  /* A judge gives this about ten seconds. Everything that answers "what is
+     this, is it trustworthy, what happened" has to be above the fold. */
+  header {
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #11161d, #0d1117);
+    padding: 14px 20px 0;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+  .brand .sub { color: var(--dim); font-size: 13px; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .badge {
+    font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--dim); background: var(--panel);
+    white-space: nowrap;
+  }
+  .badge.local { color: var(--green); border-color: rgba(63,185,80,.4); background: rgba(63,185,80,.10); }
+  .badge.npu { color: var(--violet); border-color: rgba(163,113,247,.4); background: rgba(163,113,247,.10); }
+  .badge.hw-on { color: var(--green); border-color: rgba(63,185,80,.4); background: rgba(63,185,80,.10); }
+  .badge.hw-off { color: var(--dimmer); }
+  .badge.synthetic { color: var(--amber); border-color: rgba(210,153,34,.45); background: rgba(210,153,34,.12); }
+
+  .outcome { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 14px 0 16px; }
+  .outcome-main { display: flex; align-items: center; gap: 12px; }
+  .outcome-pip { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .outcome-pip.clear, .outcome-pip.clear_with_notes { background: var(--green); box-shadow: 0 0 12px rgba(63,185,80,.7); }
+  .outcome-pip.needs_review { background: var(--red); box-shadow: 0 0 12px rgba(248,81,73,.7); }
+  .outcome h2 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.015em; }
+  .outcome .why { color: var(--dim); font-size: 13px; margin-top: 1px; }
+  .metrics { display: flex; gap: 26px; margin-left: auto; flex-wrap: wrap; }
+  .metric .n { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .metric .k { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .05em; }
+  .metric .n.bad { color: var(--red); }
+  .metric .n.warn { color: var(--amber); }
+  .metric .n.good { color: var(--green); }
+
+  .notice {
+    margin: 0 0 14px; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+    border: 1px solid rgba(210,153,34,.4); background: rgba(210,153,34,.10); color: #f0d48a;
+  }
+
+  /* ------------------------------------------------------------ layout */
+  .wrap { padding: 18px 20px 40px; display: grid; gap: 16px; grid-template-columns: minmax(0,1fr) 340px; align-items: start; }
+  .col { display: grid; gap: 16px; align-content: start; min-width: 0; }
+  @media (max-width: 1000px) { .wrap { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+  .panel h3 {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--dim); margin: 0 0 11px; font-weight: 600;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .panel h3 .note { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--dimmer); font-size: 11.5px; }
 
   .stage { position: relative; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
-  video { display: block; width: 100%; height: auto; }
-  .chips { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 80%; }
+  video { display: block; width: 100%; height: auto; max-height: 56vh; background: #000; }
+  .chips { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 78%; }
   .chip {
     padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
-    background: rgba(13,17,23,.82); border: 1px solid var(--line); backdrop-filter: blur(4px);
+    background: rgba(13,17,23,.85); border: 1px solid var(--line); backdrop-filter: blur(4px);
   }
   .chip.on-sign { color: #fff; background: rgba(248,81,73,.9); border-color: transparent; }
-  .chip.on-red { color: #fff; background: rgba(248,81,73,.75); border-color: transparent; }
+  .chip.on-red { color: #fff; background: rgba(248,81,73,.78); border-color: transparent; }
   .chip.on-green { color: #04260d; background: rgba(63,185,80,.9); border-color: transparent; }
   .chip.on-warn { color: #241a00; background: rgba(210,153,34,.92); border-color: transparent; }
   .chip.state { color: var(--dim); }
-  .chip.state.stopped { color: var(--green); border-color: rgba(63,185,80,.4); }
-  /* What the model claimed and no neighbouring sample backed up. Shown, but
-     never acted on - it is the most honest thing on the page. */
+  .chip.state.stopped { color: var(--green); border-color: rgba(63,185,80,.45); }
+  /* What the model claimed and no neighbouring sample backed up. Shown, never
+     acted on. It is the most honest thing on the page. */
   .chip.unconfirmed {
-    color: var(--dim); font-weight: 500; background: rgba(13,17,23,.6);
+    color: var(--dimmer); font-weight: 500; background: rgba(13,17,23,.65);
     border-style: dashed; text-decoration: line-through;
   }
-
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
-  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; }
-
-  .unoq { display: flex; align-items: center; gap: 14px; }
-  .led {
-    width: 44px; height: 44px; border-radius: 50%; background: #20262e;
-    border: 2px solid var(--line); flex: none;
+  .live-event {
+    position: absolute; right: 12px; top: 12px; max-width: 46%;
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    background: rgba(13,17,23,.88); border: 1px solid var(--line); backdrop-filter: blur(4px);
   }
-  .led.l0 { background: var(--green); box-shadow: 0 0 16px rgba(63,185,80,.6); }
-  .led.l1 { background: var(--amber); box-shadow: 0 0 16px rgba(210,153,34,.6); animation: blink 1s steps(1,end) infinite; }
-  .led.l2 { background: var(--red); box-shadow: 0 0 16px rgba(248,81,73,.6); animation: blink .3s steps(1,end) infinite; }
-  .led.l3 { background: var(--red); box-shadow: 0 0 22px rgba(248,81,73,.9); animation: blink .12s steps(1,end) infinite; }
-  @keyframes blink { 50% { opacity: .15; } }
-  .level-name { font-weight: 600; }
-  .level-sub { color: var(--dim); font-size: 12px; }
+  .live-event.critical { border-color: rgba(248,81,73,.65); color: #ffb3ad; }
+  .live-event.coaching { border-color: rgba(210,153,34,.6); color: #f0d48a; }
+  .live-event.info { border-color: rgba(88,166,255,.5); color: #a9d1ff; }
+  .live-event .when { display: block; font-weight: 400; color: var(--dim); font-size: 11.5px; margin-top: 2px; }
 
-  .readout { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; }
-  .readout dt { color: var(--dim); }
-  .readout dd { margin: 0; font-variant-numeric: tabular-nums; }
-
-  #graph { width: 100%; height: 132px; display: block; cursor: pointer; }
-  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--dim); margin-top: 8px; flex-wrap: wrap; }
+  #graph { width: 100%; height: 124px; display: block; cursor: pointer; }
+  .legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--dim); margin-top: 8px; flex-wrap: wrap; }
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+  .hint { color: var(--dimmer); font-size: 11.5px; margin: 9px 0 0; }
 
-  .events { max-height: 340px; overflow-y: auto; margin: -4px -4px -4px 0; padding-right: 4px; }
+  /* ------------------------------------------------------------ events */
+  .events { max-height: 300px; overflow-y: auto; margin-right: -4px; padding-right: 4px; }
   .event {
     display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left;
     background: none; border: 0; color: inherit; font: inherit; cursor: pointer;
@@ -98,47 +127,159 @@
   }
   .event:hover { background: var(--panel-2); }
   .event.active { background: var(--panel-2); outline: 1px solid var(--line); }
-  .event time { color: var(--dim); font-variant-numeric: tabular-nums; flex: none; width: 46px; }
+  .event time { color: var(--dim); font-variant-numeric: tabular-nums; flex: none; width: 46px; font-size: 12.5px; }
   .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; align-self: center; }
-  .dot.sign { background: var(--amber); }
-  .dot.pass { background: var(--green); }
-  .dot.brief { background: var(--amber); }
   .dot.fail { background: var(--red); }
-  .dot.stop { background: var(--blue); }
-  .dot.light { background: var(--red); }
-  .hint { color: var(--dim); font-size: 12px; margin-top: 10px; }
+  .dot.brief { background: var(--amber); }
+  .dot.pass { background: var(--green); }
+  .dot.red_light_ahead { background: var(--red); }
+  .dot.pedestrian_ahead { background: var(--amber); }
+  .dot.following_distance { background: var(--violet); }
+  .dot.stationary { background: var(--blue); }
+  .event .tag { margin-left: auto; font-size: 10.5px; color: var(--dimmer); text-transform: uppercase; letter-spacing: .05em; flex: none; }
+
+  /* ----------------------------------------------------- evidence cards */
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel-2); }
+  .card.scored { border-color: rgba(248,81,73,.45); }
+  .card.coaching_note { border-color: rgba(210,153,34,.45); }
+  .card.passed { border-color: rgba(63,185,80,.35); }
+  .card img { display: block; width: 100%; max-height: 210px; aspect-ratio: 16/9; object-fit: cover; background: #000; cursor: pointer; }
+  .card .noshot {
+    aspect-ratio: 16/9; max-height: 210px; display: grid; place-items: center; color: var(--dimmer);
+    background: repeating-linear-gradient(45deg,#11161d,#11161d 8px,#131922 8px,#131922 16px);
+    font-size: 12px; text-align: center; padding: 10px;
+  }
+  .card-body { padding: 12px 13px 14px; }
+  .card-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+  .card-head strong { font-size: 14px; font-weight: 640; }
+  .card-head .sev { font-size: 10.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); margin-left: auto; white-space: nowrap; }
+  .card.scored .sev { color: var(--red); border-color: rgba(248,81,73,.45); }
+  .card.coaching_note .sev { color: var(--amber); border-color: rgba(210,153,34,.45); }
+  .card.passed .sev { color: var(--green); border-color: rgba(63,185,80,.4); }
+  .card p { margin: 0 0 8px; font-size: 13px; }
+  .card .muted { color: var(--dim); font-size: 12px; }
+  .card .tip { color: #a9d1ff; font-size: 12.5px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; margin: 8px 0; }
+  .kv dt { color: var(--dimmer); }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  /* ----------------------------------------------------------- readout */
+  .unoq { display: flex; align-items: center; gap: 14px; }
+  .led { width: 42px; height: 42px; border-radius: 50%; background: #20262e; border: 2px solid var(--line); flex: none; }
+  .led.l0 { background: var(--green); box-shadow: 0 0 16px rgba(63,185,80,.6); }
+  .led.l1 { background: var(--amber); box-shadow: 0 0 16px rgba(210,153,34,.6); animation: breathe 1.6s ease-in-out infinite; }
+  .led.l2 { background: var(--red); box-shadow: 0 0 16px rgba(248,81,73,.6); }
+  .led.l3 { background: var(--red); box-shadow: 0 0 22px rgba(248,81,73,.9); animation: blink .24s steps(1,end) infinite; }
+  @keyframes blink { 50% { opacity: .15; } }
+  @keyframes breathe { 50% { opacity: .45; } }
+  .level-name { font-weight: 640; }
+  .level-sub { color: var(--dim); font-size: 12px; }
+  .readout { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: 13px; }
+  .readout dt { color: var(--dim); }
+  .readout dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  .btn {
+    font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 11px;
+  }
+  .btn:hover { border-color: var(--dim); }
+  .btn.wide { width: 100%; margin-top: 11px; }
+
+  /* -------------------------------------------------------- how it works */
+  .chain { display: grid; gap: 0; }
+  .step { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 7px 0; }
+  .step .pip { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--line-soft); margin: 4px 0 0 4px; background: var(--bg); }
+  .step.done .pip { background: var(--green); border-color: var(--green); }
+  .step.bad .pip { background: var(--red); border-color: var(--red); }
+  .step.warn .pip { background: var(--amber); border-color: var(--amber); }
+  .step .what { font-size: 13px; }
+  .step .detail { color: var(--dim); font-size: 12px; }
+  .chain .step + .step { border-top: 1px dashed var(--line-soft); }
+
+  table.tight { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tight th { text-align: left; color: var(--dimmer); font-weight: 500; padding: 4px 8px 4px 0; font-size: 11.5px; }
+  table.tight td { padding: 4px 8px 4px 0; vertical-align: top; }
+  table.tight tr + tr td { border-top: 1px solid var(--line-soft); }
+  .struck { text-decoration: line-through; color: var(--dimmer); }
+
+  .status { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .status.active { color: var(--green); border-color: rgba(63,185,80,.4); }
+  .status.warning_only { color: var(--amber); border-color: rgba(210,153,34,.4); }
+  .status.experimental { color: var(--violet); border-color: rgba(163,113,247,.4); }
+  .status.unavailable { color: var(--dimmer); }
+
+  details summary { cursor: pointer; color: var(--dim); font-size: 12.5px; }
+  details[open] summary { margin-bottom: 9px; }
+  .empty { color: var(--dimmer); font-size: 12.5px; font-style: italic; }
+  footer { padding: 0 20px 36px; color: var(--dimmer); font-size: 12px; max-width: 860px; }
+  footer ul { padding-left: 18px; margin: 8px 0 0; }
+  footer li { margin-bottom: 4px; }
 </style>
 </head>
 <body>
+
 <header>
-  <h1 id="clip">Drive Review</h1>
-  <span class="meta" id="meta"></span>
-  <div class="verdicts" id="verdicts"></div>
+  <div class="brand">
+    <h1>AI Driving Test Coach</h1>
+    <span class="sub" id="clipName"></span>
+    <div class="badges" id="badges"></div>
+  </div>
+
+  <div class="outcome">
+    <div class="outcome-main">
+      <span class="outcome-pip" id="outcomePip"></span>
+      <div>
+        <h2 id="outcomeHeadline">—</h2>
+        <div class="why" id="outcomeWhy"></div>
+      </div>
+    </div>
+    <div class="metrics" id="metrics"></div>
+  </div>
 </header>
 
 <div class="wrap">
-  <div>
+  <div class="col">
+    <div id="sourceNotice"></div>
+
     <div class="stage">
-      <video id="video" controls preload="metadata"></video>
+      <video id="video" controls preload="metadata" playsinline></video>
       <div class="chips" id="chips"></div>
+      <div id="liveEvent"></div>
     </div>
 
-    <div class="panel" style="margin-top:16px">
-      <h2>Timeline</h2>
+    <div class="panel">
+      <h3>Drive timeline <span class="note">click to jump · space plays · ← → step 5s</span></h3>
       <canvas id="graph"></canvas>
       <div class="legend">
         <span><span class="swatch" style="background:#58a6ff"></span>motion score</span>
         <span><span class="swatch" style="background:rgba(63,185,80,.35)"></span>stationary</span>
         <span><span class="swatch" style="background:rgba(210,153,34,.30)"></span>stop sign visible</span>
+        <span><span class="swatch" style="background:rgba(248,81,73,.55)"></span>decision point</span>
         <span><span class="swatch" style="background:#8b949e"></span>stopped threshold</span>
       </div>
-      <p class="hint">Click the graph to jump. Space plays and pauses; arrow keys step 5s.</p>
+    </div>
+
+    <div class="panel">
+      <h3>How the coach decided</h3>
+      <div id="chain"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Evidence <span class="note" id="evidenceNote"></span></h3>
+      <div class="cards" id="cards"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Trust <span class="note">what the model said, and what survived cross-checking</span></h3>
+      <div id="trust"></div>
     </div>
   </div>
 
-  <div style="display:grid; gap:16px; align-content:start">
+  <div class="col">
     <div class="panel">
-      <h2>UNO Q signal</h2>
+      <h3>UNO Q signal</h3>
       <div class="unoq">
         <div class="led" id="led"></div>
         <div>
@@ -146,74 +287,298 @@
           <div class="level-sub" id="levelSub"></div>
         </div>
       </div>
+      <dl class="readout" style="margin-top:12px">
+        <dt>board</dt><dd id="hwState">—</dd>
+        <dt>sketch</dt><dd id="hwSketch">—</dd>
+        <dt>events sent</dt><dd id="hwSent">—</dd>
+      </dl>
+      <button class="btn wide" id="replay">Replay drive from the start</button>
+      <p class="hint" id="hwHint"></p>
     </div>
 
     <div class="panel">
-      <h2>Live readout</h2>
+      <h3>Live readout</h3>
       <dl class="readout">
         <dt>time</dt><dd id="rTime">0.0s</dd>
         <dt>motion</dt><dd id="rScore">—</dd>
         <dt>state</dt><dd id="rState">—</dd>
-        <dt>light</dt><dd id="rLight">—</dd>
+        <dt>signal</dt><dd id="rLight">—</dd>
       </dl>
     </div>
 
     <div class="panel">
-      <h2>Events</h2>
+      <h3>Events</h3>
       <div class="events" id="events"></div>
+    </div>
+
+    <div class="panel">
+      <h3>What this build checks</h3>
+      <div id="coverage"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Local processing</h3>
+      <dl class="readout" id="processing"></dl>
+      <p class="hint" id="privacyNote"></p>
+      <a class="btn wide" id="reportLink" href="report.html" style="display:block;text-align:center;text-decoration:none">Open the printable report</a>
     </div>
   </div>
 </div>
+
+<footer>
+  <strong>Limitations</strong>
+  <ul id="limitations"></ul>
+  <p id="disclaimer"></p>
+</footer>
 
 <script>
 const DATA = /*__DRIVE_DATA__*/null;
 
 const LEVELS = [
-  ["Driving fine", "green LED"],
-  ["Heads up", "yellow LED + short buzz"],
-  ["Minor mistake", "red LED + long buzz"],
-  ["Critical", "red flashing + 3 buzzes"],
+  ["Driving fine", "green strip, calm bar on the matrix"],
+  ["Heads up", "amber strip, octagon on the matrix, one gentle tap"],
+  ["Minor mistake", "red LED, one firm pulse, strike counter +1"],
+  ["Critical", "strip flashes red, big X, three ramping buzzes"],
 ];
 
-const video = document.getElementById("video");
-const graph = document.getElementById("graph");
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const $ = id => document.getElementById(id);
+const video = $("video");
+const graph = $("graph");
 const ctx = graph.getContext("2d");
 
-video.src = DATA.video;
-document.getElementById("clip").textContent = DATA.name;
-document.getElementById("meta").textContent =
-  `${DATA.meta.width}x${DATA.meta.height} · ${DATA.meta.fps}fps · ${DATA.meta.duration}s · threshold ${DATA.threshold}`;
+const DUR = DATA.drive.duration_s || 1;
+video.src = DATA.drive.playback;
 
-// --- verdict badges -------------------------------------------------------
-// Three grades, not two. A stop that happened but lasted under the target is
-// legal and still worth saying out loud, so it gets its own amber badge rather
-// than being waved through as a clean pass.
-const GRADE_CLASS = { pass: "pass", brief: "brief", fail: "flag" };
-document.getElementById("verdicts").innerHTML = DATA.verdicts.length
-  ? DATA.verdicts.map(v => {
-      const at = `Stop sign ${v.start.toFixed(0)}s`;
-      const label =
-        v.grade === "pass"  ? `${at} — full stop (${v.stop_len.toFixed(1)}s)` :
-        v.grade === "brief" ? `${at} — only ${v.stop_len.toFixed(1)}s, aim for ${v.target_s.toFixed(0)}s` :
-                              `${at} — possible incomplete stop`;
-      return `<span class="verdict ${GRADE_CLASS[v.grade]}">${label}</span>`;
-    }).join("")
-  : `<span class="verdict pass">No stop signs detected</span>`;
+// ------------------------------------------------------------ first viewport
+$("clipName").textContent =
+  `${DATA.drive.file} · ${DATA.drive.width}×${DATA.drive.height} · ${DATA.drive.fps}fps · ${DATA.drive.duration_s}s`;
 
-// --- events ---------------------------------------------------------------
-const eventsEl = document.getElementById("events");
-eventsEl.innerHTML = DATA.events.map((e, i) =>
-  `<button class="event" data-i="${i}" data-t="${e.t}">
-     <time>${e.t.toFixed(1)}s</time>
-     <span class="dot ${e.kind}"></span>
-     <span>${e.text}</span>
-   </button>`).join("");
+const P = DATA.processing;
+const badges = [
+  `<span class="badge local" title="${esc(DATA.privacy.statement)}">100% on-device</span>`,
+  `<span class="badge" title="${esc(P.endpoint || "local GenieX endpoint")}">${esc((P.model || "no model recorded").replace(/^qualcomm\//, ""))}</span>`,
+];
+// The compute badge says "requested", because that is all we can honestly say:
+// geniex serve takes -c npu but the OpenAI-compatible API gives nothing back
+// that would let us verify where inference ran.
+if (P.compute_requested && !P.replayed)
+  badges.push(`<span class="badge npu" title="${esc(P.compute_note)}">NPU requested</span>`);
+if (P.replayed)
+  badges.push(`<span class="badge synthetic" title="${esc(P.replay_note || "")}">replayed labels</span>`);
+if (DATA.drive.source !== "real")
+  badges.push(`<span class="badge synthetic">${esc(DATA.drive.source)} footage</span>`);
+badges.push(`<span class="badge hw-off" id="hwBadge">UNO Q: checking…</span>`);
+$("badges").innerHTML = badges.join("");
+
+const O = DATA.outcome;
+$("outcomePip").className = "outcome-pip " + O.result;
+$("outcomeHeadline").textContent = O.headline;
+$("outcomeWhy").textContent = O.summary;
+
+const rt = P.real_time_ratio;
+$("metrics").innerHTML = [
+  [O.critical_findings, "critical findings", O.critical_findings ? "bad" : "good"],
+  [O.coaching_notes, "coaching notes", O.coaching_notes ? "warn" : ""],
+  [P.calls ? `${P.calls}` : "—", "NPU calls", ""],
+  [P.median_s ? `${P.median_s}s` : "—", "median warm call", ""],
+  [P.analysis_s ? `${P.analysis_s}s` : "—", rt ? `analysis (${rt}× real time)` : "analysis", ""],
+].map(([n, k, cls]) =>
+  `<div class="metric"><div class="n ${cls}">${esc(n)}</div><div class="k">${esc(k)}</div></div>`
+).join("");
+
+const notices = [];
+if (DATA.drive.source !== "real")
+  notices.push(`<strong>${esc(DATA.drive.source)} footage.</strong> This clip was generated,
+    not recorded. It exists to demonstrate an outcome we have no real footage of, and we
+    are not going to break a traffic law to get some.`);
+// A replayed run must never be presented as a live one. This is the banner that
+// keeps that promise.
+if (P.replayed)
+  notices.push(`<strong>Replayed scene labels.</strong> ${esc(P.replay_note || "")}`);
+else if (DATA.drive.source !== "real")
+  notices.push(`The analysis of it below was a genuine local run.`);
+if (P.failed)
+  notices.push(`<strong>${P.failed} model call${P.failed === 1 ? "" : "s"} failed.</strong>
+    Those samples carry no observations, so they can only have cost a detection —
+    they cannot have invented one.`);
+$("sourceNotice").innerHTML = notices.length
+  ? `<p class="notice">${notices.join(" ")}</p>` : "";
+
+// ------------------------------------------------------------------- events
+const GRADE_OF = e => e.grade || e.kind;
+
+// A graded finding is listed at the moment the VERDICT landed, not at the
+// moment we first saw the sign. Those are ten seconds apart on a failed
+// approach, and listing the earlier one would read as if we had flagged the
+// driver before the window closed - which is the exact bug this build fixed.
+const VERDICT = new Set(["scored", "coaching_note", "passed"]);
+const listTime = e => VERDICT.has(e.status) ? e.decision_at : e.detected_at;
+
+const eventsEl = $("events");
+const listed = DATA.events.slice().sort((a, b) => listTime(a) - listTime(b));
+eventsEl.innerHTML = listed.length ? listed.map((e, i) =>
+  `<button class="event" data-i="${i}" data-t="${e.evidence_start}"
+      title="first grounds ${e.detected_at.toFixed(1)}s · decided ${e.decision_at.toFixed(1)}s">
+     <time>${listTime(e).toFixed(1)}s</time>
+     <span class="dot ${esc(GRADE_OF(e))}"></span>
+     <span>${esc(e.title)}</span>
+     <span class="tag">${esc(e.status.replace(/_/g, " "))}</span>
+   </button>`).join("")
+  : `<p class="empty">Nothing was detected in this drive.</p>`;
+
 eventsEl.addEventListener("click", ev => {
   const btn = ev.target.closest(".event");
-  if (btn) { video.currentTime = parseFloat(btn.dataset.t); video.play(); }
+  if (!btn) return;
+  video.currentTime = Math.max(0, parseFloat(btn.dataset.t));
+  video.play();
 });
 
-// --- lookups --------------------------------------------------------------
+// ------------------------------------------------------------ evidence cards
+const scored = DATA.events.filter(e =>
+  ["scored", "coaching_note", "passed"].includes(e.status));
+const shown = scored.length ? scored : DATA.events;
+
+$("evidenceNote").textContent = shown.length
+  ? "click a still to jump there" : "";
+
+$("cards").innerHTML = shown.length ? shown.map(e => {
+  const shot = e.screenshot
+    ? `<img src="${esc(e.screenshot)}" alt="Frame at ${e.decision_at.toFixed(1)}s" data-t="${e.decision_at}">`
+    : `<div class="noshot">no evidence still was saved for this event</div>`;
+  const offset = e.screenshot && e.screenshot_exact === false && e.screenshot_offset_s
+    ? `nearest sampled frame, ${Math.abs(e.screenshot_offset_s).toFixed(1)}s ${e.screenshot_offset_s < 0 ? "before" : "after"}`
+    : (e.screenshot ? `frame at ${e.decision_at.toFixed(2)}s` : "");
+  return `<div class="card ${esc(e.status)}">
+    ${shot}
+    <div class="card-body">
+      <div class="card-head">
+        <strong>${esc(e.title)}</strong>
+        <span class="sev">${esc(e.status.replace(/_/g, " "))}</span>
+      </div>
+      <p>${esc(e.detail)}</p>
+      <dl class="kv">
+        <dt>evidence</dt><dd>${e.evidence_start.toFixed(1)}s – ${e.evidence_end.toFixed(1)}s</dd>
+        <dt>first grounds</dt><dd>${e.detected_at.toFixed(1)}s</dd>
+        <dt>decided</dt><dd>${e.decision_at.toFixed(1)}s</dd>
+        ${offset ? `<dt>still</dt><dd>${esc(offset)}</dd>` : ""}
+      </dl>
+      <p class="muted"><strong>Rule:</strong> ${esc(e.rule)}</p>
+      ${e.tip ? `<p class="tip">→ ${esc(e.tip)}</p>` : ""}
+      ${e.limitations.length ? `<p class="muted">${e.limitations.map(esc).join(" ")}</p>` : ""}
+    </div>
+  </div>`;
+}).join("") : `<p class="empty">No evidence cards - nothing was scored in this drive.</p>`;
+
+$("cards").addEventListener("click", ev => {
+  const t = ev.target.dataset && ev.target.dataset.t;
+  if (t !== undefined) { video.currentTime = parseFloat(t); video.play(); }
+});
+
+// --------------------------------------------------- how the coach decided
+// The panel that answers "so it just turns on an LED when it sees a sign?".
+// Each approach is shown as the chain of things that had to be true, with the
+// timestamps, so the temporal part of the system is visible rather than implied.
+function renderChain() {
+  if (!DATA.approaches.length) {
+    $("chain").innerHTML =
+      `<p class="empty">No stop-sign approach was confirmed, so there was nothing to grade.</p>`;
+    return;
+  }
+  $("chain").innerHTML = DATA.approaches.map(a => {
+    const steps = [
+      ["done", `Stop sign confirmed in ${a.sightings.length} samples`,
+        `first seen ${a.first_seen.toFixed(0)}s · believed from ${a.validated_at.toFixed(0)}s · ` +
+        `a single sighting is discarded as a misreading`],
+      ["done", `Approach window held open to ${a.deadline.toFixed(0)}s`,
+        `the sign left the camera's view at ${a.last_seen.toFixed(0)}s, before the car reaches the line`],
+      a.stopped
+        ? ["done", `Stationary window found: ${a.stop_len.toFixed(2)}s at ${a.stop_at.toFixed(1)}s`,
+           `measured by the per-frame motion layer, not by the vision model`]
+        : ["bad", "No stationary window anywhere in the approach",
+           `the motion score never dropped below ${DATA.motion.threshold} between ` +
+           `${a.first_seen.toFixed(0)}s and ${a.deadline.toFixed(0)}s`],
+      a.grade === "pass"
+        ? ["done", `Full stop - met the ${a.target_s.toFixed(0)}s target`, "nothing scored"]
+        : a.grade === "brief"
+        ? ["warn", `Brief stop - under the ${a.target_s.toFixed(0)}s target`,
+           "legal, and a coaching note. It is not counted as an error."]
+        : ["bad", `Possible incomplete stop, decided at ${a.decision_at.toFixed(0)}s`,
+           "nothing is signalled before this moment - the window had to expire first"],
+    ];
+    return `<div class="chain">` + steps.map(([cls, what, detail]) =>
+      `<div class="step ${cls}"><span class="pip"></span>
+         <span><span class="what">${esc(what)}</span><br>
+         <span class="detail">${esc(detail)}</span></span></div>`).join("") + `</div>`;
+  }).join(`<hr style="border:0;border-top:1px solid var(--line);margin:12px 0">`);
+}
+renderChain();
+
+// ------------------------------------------------------------------- trust
+(function renderTrust() {
+  const rejected = DATA.observations.rejected;
+  const total = DATA.observations.samples.length;
+  let html = `<p class="muted" style="color:var(--dim);font-size:12.5px;margin:0 0 10px">
+    The model answers one frame at a time and cannot correct itself. The drive can:
+    a real sign, signal or pedestrian lasts several seconds, so it shows up in
+    consecutive samples. Anything that appears in only one is dropped before it
+    can score, warn, or reach the board.</p>`;
+
+  if (rejected.length) {
+    html += `<table class="tight"><tr><th>time</th><th>the model claimed</th><th>why it was dropped</th></tr>` +
+      rejected.map(r =>
+        `<tr><td>${r.t.toFixed(1)}s</td>
+             <td class="struck">${esc(r.field.replace(/_/g, " "))} = ${esc(r.value)}</td>
+             <td style="color:var(--dimmer)">${esc(r.reason)}</td></tr>`).join("") +
+      `</table><p class="hint">${rejected.length} of ${total} samples carried a claim that did not survive. None of them reached the score or the hardware.</p>`;
+  } else {
+    html += `<p class="empty">No unconfirmed claims in this drive — every detection was backed up by a neighbouring sample.</p>`;
+  }
+  $("trust").innerHTML = html;
+})();
+
+// ---------------------------------------------------------------- coverage
+$("coverage").innerHTML = `<table class="tight">` + DATA.coverage.map(c =>
+  `<tr><td style="white-space:nowrap">${esc(c.label)}<br>
+       <span class="status ${esc(c.status)}">${esc(c.status.replace(/_/g, " "))}</span></td>
+       <td style="color:var(--dim)">${esc(c.note)}</td></tr>`).join("") + `</table>`;
+
+// -------------------------------------------------------------- processing
+$("processing").innerHTML = [
+  ["model", (P.model || "—").replace(/^qualcomm\//, "")],
+  ["endpoint", P.endpoint || "—"],
+  ["compute", P.compute_requested ? `${P.compute_requested} (requested)` : "server default"],
+  ["calls", `${P.calls}${P.failed ? ` (${P.failed} failed)` : ""}`],
+  ["warm median / p95", P.median_s ? `${P.median_s}s / ${P.p95_s}s` : "not measured"],
+  ["first call (cold)", P.first_call_s ? `${P.first_call_s}s (model load)` : "—"],
+  ["total analysis", P.analysis_s ? `${P.analysis_s}s` : "—"],
+  ["real-time ratio", rt ? `${rt}×` : "—"],
+  ["uploads", "0"],
+].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+$("privacyNote").textContent = P.compute_note
+  ? `${DATA.privacy.statement} Compute: ${P.compute_note}.`
+  : DATA.privacy.statement;
+
+$("limitations").innerHTML = DATA.limitations.map(l => `<li>${esc(l)}</li>`).join("");
+$("disclaimer").textContent = O.disclaimer;
+
+// ------------------------------------------------------------- level track
+// The level at time t comes from an explicit track with exact transition
+// timestamps, NOT from the nearest vision sample. That is what lets a decision
+// land at the second it was actually made instead of at whichever sample
+// happened to follow it, up to a sampling interval later.
+function trackIndexAt(t) {
+  const L = DATA.levels;
+  let lo = 0, hi = L.length - 1, best = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (L[mid][0] <= t) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return best;
+}
+
 function lastAtOrBefore(arr, t, key) {
   let lo = 0, hi = arr.length - 1, best = -1;
   while (lo <= hi) {
@@ -223,61 +588,49 @@ function lastAtOrBefore(arr, t, key) {
   }
   return best;
 }
+const sampleAt = t => { const i = lastAtOrBefore(DATA.observations.samples, t, "t"); return i < 0 ? null : DATA.observations.samples[i]; };
+const scoreAt = t => { const i = lastAtOrBefore(DATA.motion.points, t, null); return i < 0 ? null : DATA.motion.points[i][1]; };
+const inAnyStop = t => DATA.motion.stationary.some(([a, b]) => t >= a && t <= b);
+const eventAt = t => DATA.events.find(e => t >= e.decision_at && t <= e.decision_at + 4) || null;
 
-function sceneAt(t) {
-  const i = lastAtOrBefore(DATA.samples, t, "t");
-  return i < 0 ? null : DATA.samples[i];
-}
-function scoreAt(t) {
-  const i = lastAtOrBefore(DATA.motion, t, null);
-  return i < 0 ? null : DATA.motion[i][1];
-}
-function inAnyStop(t) {
-  return DATA.stops.some(([a, b]) => t >= a && t <= b);
-}
-
-// --- graph ----------------------------------------------------------------
+// ------------------------------------------------------------------- graph
 let maxScore = 1;
-for (const [, s] of DATA.motion) if (s > maxScore) maxScore = s;
+for (const [, s] of DATA.motion.points) if (s > maxScore) maxScore = s;
 const yMax = maxScore * 1.1;
 
 function resizeGraph() {
   const dpr = window.devicePixelRatio || 1;
-  const w = graph.clientWidth, h = graph.clientHeight;
-  graph.width = w * dpr; graph.height = h * dpr;
+  graph.width = graph.clientWidth * dpr;
+  graph.height = graph.clientHeight * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawGraph();
 }
 
 function drawGraph() {
   const w = graph.clientWidth, h = graph.clientHeight;
-  const dur = DATA.meta.duration || 1;
-  const X = t => (t / dur) * w;
+  const X = t => (t / DUR) * w;
   const Y = s => h - (s / yMax) * (h - 8) - 4;
-
   ctx.clearRect(0, 0, w, h);
 
-  for (const [a, b] of DATA.stops) {
+  for (const [a, b] of DATA.motion.stationary) {
     ctx.fillStyle = "rgba(63,185,80,.22)";
     ctx.fillRect(X(a), 0, Math.max(1.5, X(b) - X(a)), h);
   }
-  for (const v of DATA.verdicts) {
+  for (const a of DATA.approaches) {
     ctx.fillStyle = "rgba(210,153,34,.20)";
-    ctx.fillRect(X(v.start), 0, Math.max(2, X(v.end) - X(v.start)), h);
-    ctx.strokeStyle = v.stopped ? "rgba(63,185,80,.5)" : "rgba(248,81,73,.6)";
-    ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(X(v.deadline), 0); ctx.lineTo(X(v.deadline), h); ctx.stroke();
+    ctx.fillRect(X(a.first_seen), 0, Math.max(2, X(a.last_seen) - X(a.first_seen)), h);
+    ctx.strokeStyle = a.grade === "fail" ? "rgba(248,81,73,.75)" : "rgba(63,185,80,.5)";
+    ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(X(a.decision_at), 0); ctx.lineTo(X(a.decision_at), h); ctx.stroke();
     ctx.setLineDash([]);
   }
 
-  ctx.strokeStyle = "rgba(139,148,158,.55)";
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(0, Y(DATA.threshold)); ctx.lineTo(w, Y(DATA.threshold)); ctx.stroke();
+  ctx.strokeStyle = "rgba(139,148,158,.5)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, Y(DATA.motion.threshold)); ctx.lineTo(w, Y(DATA.motion.threshold)); ctx.stroke();
 
-  ctx.strokeStyle = "#58a6ff";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#58a6ff"; ctx.lineWidth = 1.5;
   ctx.beginPath();
-  DATA.motion.forEach(([t, s], i) => i ? ctx.lineTo(X(t), Y(s)) : ctx.moveTo(X(t), Y(s)));
+  DATA.motion.points.forEach(([t, s], i) => i ? ctx.lineTo(X(t), Y(s)) : ctx.moveTo(X(t), Y(s)));
   ctx.stroke();
 
   const t = video.currentTime || 0;
@@ -287,23 +640,18 @@ function drawGraph() {
 
 graph.addEventListener("click", e => {
   const r = graph.getBoundingClientRect();
-  video.currentTime = ((e.clientX - r.left) / r.width) * DATA.meta.duration;
+  video.currentTime = ((e.clientX - r.left) / r.width) * DUR;
 });
 
-// --- the real hardware ----------------------------------------------------
-// The page posts to its own origin; serve_player.py relays to the UNO Q's MCP
-// server over the USB tunnel. A browser cannot speak MCP and cannot see the
-// tunnel, so it has to go through the server that served this page.
+// ---------------------------------------------------------------- hardware
+// The page posts to its own origin; serve_player.py relays over the USB
+// tunnel. A browser cannot speak MCP and cannot see the tunnel.
 //
-// Only changes are sent. timeupdate fires ~4x a second and the level is the
-// same almost every time; without this the USB link would carry hundreds of
-// identical messages a minute.
-//
-// Everything here fails silently on purpose. No board, no server, opened
-// straight from file:// - the review page must still work. It is the whole
-// product when the hardware is not plugged in.
-let hwLevel = null;
-let hwOffline = false;
+// Every post carries the transition's index in the level track. The relay
+// applies a transition only if it is further through the drive than anything
+// applied so far, so scrubbing backwards cannot buzz the motor twice or tick
+// the strike counter again. "Replay drive" clears that and runs it all again.
+let hwOffline = false, lastSeq = -1;
 
 function postHW(path, body) {
   if (hwOffline) return Promise.resolve(null);
@@ -311,37 +659,66 @@ function postHW(path, body) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body || {}),
-  }).catch(() => { hwOffline = true; return null; });
+  }).then(r => r.json()).catch(() => { hwOffline = true; refreshStatus(); return null; });
 }
 
-function sendLevel(level) {
-  if (level === hwLevel) return;
-  hwLevel = level;
-  postHW("/api/alert", { level });
+function sendLevel(seq, level) {
+  if (seq === lastSeq) return;
+  lastSeq = seq;
+  postHW("/api/alert", { level, seq });
 }
 
-// A fresh drive: clear the strike count on the board, and forget what we last
-// sent so the first level of the run is transmitted even if it is the same.
 function resetHW() {
-  hwLevel = null;
-  postHW("/api/reset");
+  lastSeq = -1;
+  return postHW("/api/reset");
 }
-video.addEventListener("play", () => { if (video.currentTime < 0.5) resetHW(); });
-video.addEventListener("seeking", () => { hwLevel = null; });
 
-// --- live update ----------------------------------------------------------
-const chipsEl = document.getElementById("chips");
-const led = document.getElementById("led");
+$("replay").addEventListener("click", () => {
+  video.currentTime = 0;
+  resetHW().then(() => video.play());
+});
+video.addEventListener("play", () => { if (video.currentTime < 0.5) resetHW(); });
+
+function refreshStatus() {
+  const badge = $("hwBadge");
+  if (hwOffline) {
+    badge.className = "badge hw-off"; badge.textContent = "UNO Q: not connected";
+    $("hwState").textContent = "not connected";
+    $("hwSketch").textContent = "—";
+    $("hwSent").textContent = "—";
+    $("hwHint").textContent =
+      "The review works fully without the board. To drive it, run ./run.sh --unoq " +
+      "so the page is served and the USB relay is running.";
+    return;
+  }
+  fetch("/api/status").then(r => r.json()).then(s => {
+    const on = s.connected;
+    badge.className = "badge " + (on ? "hw-on" : "hw-off");
+    badge.textContent = on ? "UNO Q: connected" : "UNO Q: not connected";
+    $("hwState").textContent = on ? s.url : "not connected";
+    $("hwSketch").textContent = on ? (s.sketch_ok ? "answering (mcu_ping)" : "no reply to mcu_ping") : "—";
+    $("hwSent").textContent = `${s.events_sent || 0} sent, ${s.events_skipped || 0} skipped on rewind`;
+    $("hwHint").textContent = on
+      ? "Each transition fires once per drive. Scrubbing back will not buzz or count twice."
+      : (s.error || "Serving locally, but no board answered on the USB tunnel.");
+  }).catch(() => { hwOffline = true; refreshStatus(); });
+}
+refreshStatus();
+setInterval(() => { if (!hwOffline) refreshStatus(); }, 4000);
+
+// ------------------------------------------------------------ live update
+const chipsEl = $("chips");
+const led = $("led");
 
 function update() {
   const t = video.currentTime || 0;
-  const sample = sceneAt(t);
+  const sample = sampleAt(t);
   const score = scoreAt(t);
   const stopped = inAnyStop(t);
 
-  document.getElementById("rTime").textContent = t.toFixed(1) + "s";
-  document.getElementById("rScore").textContent = score === null ? "—" : score.toFixed(2);
-  document.getElementById("rState").textContent = stopped ? "stopped" : "moving";
+  $("rTime").textContent = t.toFixed(1) + "s";
+  $("rScore").textContent = score === null ? "—" : score.toFixed(2);
+  $("rState").textContent = stopped ? "stopped" : "moving";
 
   const chips = [`<span class="chip state ${stopped ? "stopped" : ""}">${stopped ? "STOPPED" : "moving"}</span>`];
   let light = "—";
@@ -350,45 +727,51 @@ function update() {
     // "confirmed" is what we act on: the model's answer with anything no
     // neighbouring sample agreed with stripped out. "scene" is the raw answer,
     // shown crossed out so the filtering is visible rather than magic.
-    const s = sample.confirmed || sample.scene;
-    const raw = sample.scene;
+    const s = sample.confirmed || sample.scene, raw = sample.scene;
 
     if (s.stop_sign) chips.push(`<span class="chip on-sign">STOP SIGN</span>`);
     if (s.traffic_light !== "none") {
       light = s.traffic_light + (s.light_is_for_our_lane ? " (ours)" : " (not ours)");
-      const cls = s.traffic_light === "green" ? "on-green"
-                : s.traffic_light === "red" ? "on-red" : "on-warn";
-      chips.push(`<span class="chip ${cls}">${light.toUpperCase()}</span>`);
+      const cls = s.traffic_light === "green" ? "on-green" : s.traffic_light === "red" ? "on-red" : "on-warn";
+      chips.push(`<span class="chip ${cls}">${esc(light.toUpperCase())}</span>`);
     }
-    if (s.pedestrian_in_crosswalk) chips.push(`<span class="chip on-warn">PEDESTRIAN</span>`);
+    if (s.pedestrian_in_crosswalk) chips.push(`<span class="chip on-warn">PERSON IN ROAD</span>`);
     if (s.car_ahead_close) chips.push(`<span class="chip on-warn">CAR AHEAD CLOSE</span>`);
     if (s.stop_line_visible) chips.push(`<span class="chip">stop line</span>`);
 
     const unconfirmed = [];
-    if (raw.traffic_light !== "none" && s.traffic_light === "none")
-      unconfirmed.push(raw.traffic_light + " light");
-    if (raw.pedestrian_in_crosswalk && !s.pedestrian_in_crosswalk) unconfirmed.push("pedestrian");
+    if (raw.traffic_light !== "none" && s.traffic_light === "none") unconfirmed.push(raw.traffic_light + " light");
+    if (raw.pedestrian_in_crosswalk && !s.pedestrian_in_crosswalk) unconfirmed.push("person in road");
     if (raw.car_ahead_close && !s.car_ahead_close) unconfirmed.push("car ahead close");
     if (raw.stop_line_visible && !s.stop_line_visible) unconfirmed.push("stop line");
     unconfirmed.forEach(label => chips.push(
-      `<span class="chip unconfirmed" title="the model said this once and no neighbouring sample agreed, so we ignore it">${label}</span>`
-    ));
+      `<span class="chip unconfirmed" title="the model said this once and no neighbouring sample agreed, so it is ignored">${esc(label)}</span>`));
+
+    if (sample.error) chips.push(`<span class="chip unconfirmed" title="${esc(sample.error)}">model call failed</span>`);
   }
 
-  document.getElementById("rLight").textContent = light;
+  $("rLight").textContent = light;
   chipsEl.innerHTML = chips.join("");
 
-  const level = sample ? sample.level : 0;
+  const idx = trackIndexAt(t);
+  const [, level, kind] = DATA.levels[idx];
   led.className = "led l" + level;
-  document.getElementById("levelName").textContent = `Level ${level} — ${LEVELS[level][0]}`;
-  document.getElementById("levelSub").textContent = LEVELS[level][1];
-  sendLevel(level);
+  $("levelName").textContent = `Level ${level} — ${LEVELS[level][0]}`;
+  $("levelSub").textContent = LEVELS[level][1];
+  sendLevel(idx, level);
+
+  const live = eventAt(t);
+  $("liveEvent").innerHTML = live
+    ? `<div class="live-event ${esc(live.severity)}">${esc(live.title)}
+         <span class="when">decided at ${live.decision_at.toFixed(1)}s · ${esc(live.status.replace(/_/g, " "))}</span></div>`
+    : (kind !== "clear"
+       ? `<div class="live-event info">${esc(kind.replace(/_/g, " "))} ahead<span class="when">heads-up, nothing scored</span></div>`
+       : "");
 
   let activeIdx = -1;
-  DATA.events.forEach((e, i) => { if (e.t <= t + 0.25) activeIdx = i; });
-  document.querySelectorAll(".event").forEach(el => {
-    el.classList.toggle("active", parseInt(el.dataset.i, 10) === activeIdx);
-  });
+  listed.forEach((e, i) => { if (listTime(e) <= t + 0.25) activeIdx = i; });
+  document.querySelectorAll(".event").forEach(el =>
+    el.classList.toggle("active", parseInt(el.dataset.i, 10) === activeIdx));
 
   drawGraph();
 }
@@ -396,10 +779,16 @@ function update() {
 video.addEventListener("timeupdate", update);
 video.addEventListener("seeked", update);
 video.addEventListener("loadedmetadata", update);
+video.addEventListener("error", () => {
+  $("sourceNotice").innerHTML =
+    `<p class="notice"><strong>The browser will not play this video.</strong>
+     Everything else on the page still works. If you opened this from disk, serve
+     it instead: <code>python tools/serve_player.py --open</code></p>`;
+});
 window.addEventListener("resize", resizeGraph);
 
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT") return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
   if (e.code === "Space") { e.preventDefault(); video.paused ? video.play() : video.pause(); }
   if (e.code === "ArrowRight") video.currentTime += 5;
   if (e.code === "ArrowLeft") video.currentTime -= 5;

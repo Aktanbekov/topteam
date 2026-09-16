@@ -5,9 +5,9 @@ This is the end-to-end hardware check with no video and no model involved:
     laptop -> MCP -> USB/ADB -> UNO Q Linux -> Router Bridge -> sketch -> LEDs
 
 Use it when the review player shows nothing on the board and you need to know
-which half is at fault. It is also the only way to see levels 2 and 3 on the
-current footage: IMG_9830 never produces a mistake, so a real run stays on
-green and amber and the motor never fires.
+which half is at fault. It is also the only way to see level 2: no check in the
+product produces it, because a brief stop is legal and following distance is
+experimental. For level 3 on a real run, use  ./run.sh --demo fail --unoq
 
     python laptop/test_signals.py
     python laptop/test_signals.py --hold 4
@@ -32,12 +32,21 @@ LEVEL_MEANING = {
 }
 
 # What each level should look like, so you check the board rather than trust it.
+# Levels are told apart by INTENSITY, not by presence: an earlier build kept
+# level 1 silent so a buzz could only ever mean a mistake, and on real footage
+# the entire heads-up was one small LED changing colour - the first live run
+# looked like the hardware was dead.
 EXPECTED = {
     0: "green on the strip, calm bar on the matrix, no buzz",
-    1: "amber on the strip, still no buzz",
-    2: "ONE buzz, strip gains a red LED, matrix shows the count",
+    1: "whole strip amber and breathing, octagon on the matrix, ONE gentle tap",
+    2: "ONE firm pulse, strip gains a red LED, matrix shows the count",
     3: "THREE ramping buzzes, whole strip flashes red, matrix shows a big X",
 }
+
+# Level 2 is implemented on the board but no check currently produces it: a
+# brief stop is legal and must not be counted as an error, and following
+# distance is experimental and unscored. This script is the way to see it.
+UNUSED_BY_SCORING = {2}
 
 
 def main():
@@ -72,7 +81,8 @@ def main():
 
     try:
         for level in sorted(LEVEL_MEANING):
-            print(f"  level {level}  {LEVEL_MEANING[level]}")
+            unused = "  (no scored check produces this)" if level in UNUSED_BY_SCORING else ""
+            print(f"  level {level}  {LEVEL_MEANING[level]}{unused}")
             print(f"           expect: {EXPECTED[level]}")
             if not unoq.set_level(level):
                 sys.exit(f"\nFailed sending level {level}: {unoq.last_error}")

@@ -10,10 +10,15 @@
  * Both Modulinos plug into the QWIIC connector and daisy-chain to each other.
  * No other wiring, no resistors, no transistor - the Vibro has its own MOSFET.
  *
- *   0 = driving fine      green,  no buzz
- *   1 = heads up          amber,  no buzz      (see "why level 1 is silent")
- *   2 = minor mistake     red,    one buzz,    strike count +1
- *   3 = critical mistake  red X,  three buzzes, ramping
+ *   0 = driving fine      green,   no buzz
+ *   1 = heads up          amber,   ONE GENTLE TAP, octagon on the matrix
+ *   2 = minor mistake     red,     one firm pulse, strike count +1
+ *   3 = critical mistake  red X,   three buzzes, ramping
+ *
+ * Levels are told apart by intensity, not by presence - see buzzHeadsUp()
+ * below for why level 1 is no longer silent. Level 2 is implemented and
+ * reachable (laptop/test_signals.py) but no scored check on the laptop
+ * currently produces it.
  *
  * Every library call here matches the hardware test sketch that is known to
  * work on this board. The one thing that differs: nothing below blocks.

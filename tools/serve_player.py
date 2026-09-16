@@ -10,7 +10,20 @@ Python's built-in server does not support HTTP range requests, which means the
 browser cannot seek in the video - the scrubber jumps back to the start. This
 handler adds range support, so seeking works.
 
-Everything stays on the laptop; nothing is exposed beyond localhost.
+With --unoq it is also the relay to the board. The page cannot speak MCP and
+cannot see the USB tunnel, so it posts to its own origin and we forward:
+
+    POST /api/reset            start a fresh drive, clear the strike counter
+    POST /api/alert {level, seq}   apply one transition from the level track
+    GET  /api/status           what the hardware panel shows
+
+`seq` is the transition's index in the drive's level track. A transition is
+applied only if it is further through the drive than anything applied so far,
+so scrubbing backwards over a critical event cannot buzz the motor twice or
+count a second strike.
+
+Everything stays on the laptop; the socket binds 127.0.0.1 and nothing is
+exposed beyond localhost.
 """
 
 import argparse
@@ -31,7 +44,8 @@ RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
 # and we forward to the board's MCP server over the USB tunnel. The browser
 # cannot reach the board itself - it has no way to speak MCP, and the tunnel
 # lives on this machine - so the page talks to its own origin and we relay.
-SENDER = None
+REPLAY = None
+BOARD = None
 
 
 class RangeHandler(SimpleHTTPRequestHandler):
@@ -114,8 +128,31 @@ class RangeHandler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        # Everything is served from and posted to 127.0.0.1. Saying so stops a
+        # stray page on another origin from driving the board.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _body(self, limit=4096):
+        """Read a small JSON body. Returns {} for anything we cannot parse."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return {}
+        if length <= 0 or length > limit:
+            return {}
+        try:
+            parsed = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def do_GET(self):
+        if self.path.split("?")[0] == "/api/status":
+            self._json(200, board_status())
+            return
+        super().do_GET()
 
     def do_POST(self):
         route = self.path.split("?")[0]
@@ -123,52 +160,81 @@ class RangeHandler(SimpleHTTPRequestHandler):
             self._json(404, {"error": "POST /api/alert or /api/reset"})
             return
 
-        if SENDER is None:
+        if REPLAY is None:
             # Not an error: the player works perfectly well with no board, and
             # the page should carry on rather than pop up a failure.
             self._json(200, {"ok": True, "hardware": False})
             return
 
         if route == "/api/reset":
-            self._json(200, {"ok": SENDER.reset(), "hardware": True})
+            ok = REPLAY.reset()
+            print("  drive reset - board cleared", flush=True)
+            self._json(200, {"ok": ok, "hardware": True, **REPLAY.status()})
             return
 
-        length = int(self.headers.get("Content-Length") or 0)
+        body = self._body()
         try:
-            level = json.loads(self.rfile.read(length) or b"{}").get("level")
-            level = int(level)
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            self._json(400, {"error": f"bad level: {exc}"})
+            level = int(body.get("level"))
+            seq = int(body.get("seq", 0))
+        except (TypeError, ValueError):
+            self._json(400, {"error": "level and seq must be integers"})
             return
         if level not in (0, 1, 2, 3):
             self._json(400, {"error": f"level must be 0-3, got {level}"})
             return
+        if seq < 0:
+            self._json(400, {"error": f"seq must not be negative, got {seq}"})
+            return
 
-        sent = SENDER.send(level)
-        if sent:
-            print(f"  level {level} -> board", flush=True)
-        self._json(200, {"ok": True, "hardware": True, "sent": sent, "level": level})
+        # The page hands us its position in the level track. EventReplay applies
+        # a transition only if it is further through the drive than anything
+        # applied so far, so scrubbing backwards cannot buzz twice or tick the
+        # strike counter again. See laptop/unoq_mcp.py.
+        result = REPLAY.apply(level, seq)
+        if result == "sent":
+            print(f"  level {level} -> board  (event {seq})", flush=True)
+        self._json(
+            200,
+            {"ok": result != "failed", "hardware": True, "result": result,
+             "level": level, **REPLAY.status()},
+        )
 
     def log_message(self, fmt, *args):
         pass
 
 
+def board_status():
+    """What the page's hardware panel shows. Always answers, board or no board."""
+    if REPLAY is None or BOARD is None:
+        return {
+            "connected": False,
+            "url": None,
+            "sketch_ok": False,
+            "events_sent": 0,
+            "events_skipped": 0,
+            "error": "serving without --unoq, so nothing is being sent to a board",
+        }
+    return {**BOARD.status(), **REPLAY.status()}
+
+
 def connect_board(url):
-    """Open the MCP session. Returns a LevelSender, or None if unreachable."""
-    from unoq_mcp import LevelSender, UnoQ
+    """Open the MCP session. Returns (UnoQ, EventReplay), or (None, None)."""
+    from unoq_mcp import EventReplay, UnoQ
 
     unoq = UnoQ(url=url) if url else UnoQ()
     if not unoq.connect():
         print("\n  no UNO Q - the player still works, the hardware just sits idle")
-        for line in unoq.last_error.splitlines():
+        for line in (unoq.last_error or "unknown error").splitlines():
             print(f"    {line}")
-        return None
+        return None, None
 
-    sender = LevelSender(unoq)
-    sender.reset()
+    replay = EventReplay(unoq)
+    replay.reset()
     print(f"  UNO Q connected at {unoq.url}")
-    print(f"  sketch answering: {unoq.ping()}")
-    return sender
+    # mcu_ping is the only call that waits for the sketch to answer. The others
+    # only prove the router took our bytes.
+    print(f"  sketch answering mcu_ping: {unoq.ping()}")
+    return unoq, replay
 
 
 def main():
@@ -179,6 +245,12 @@ def main():
         type=Path,
         default=Path(__file__).resolve().parent.parent,
         help="directory to serve (default: the project root)",
+    )
+    parser.add_argument(
+        "--page",
+        default="output/player.html",
+        help="which built page to open, relative to --root. A demo build lives "
+        "under output/demo/<grade>/player.html.",
     )
     parser.add_argument("--open", action="store_true", help="open a browser")
     parser.add_argument(
@@ -192,9 +264,9 @@ def main():
     )
     args = parser.parse_args()
 
-    global SENDER
+    global REPLAY, BOARD
     if args.unoq is not None:
-        SENDER = connect_board(args.unoq or None)
+        BOARD, REPLAY = connect_board(args.unoq or None)
 
     handler = partial(RangeHandler, directory=str(args.root))
 
@@ -218,9 +290,12 @@ def main():
             f"  netstat -ano | grep :{args.port}"
         )
 
-    url = f"http://127.0.0.1:{port}/output/player.html"
+    page = args.page.replace("\\", "/").lstrip("/")
+    report = (page.rsplit("/", 1)[0] + "/report.html") if "/" in page else "report.html"
+    url = f"http://127.0.0.1:{port}/{page}"
     print(f"serving {args.root}")
     print(f"open {url}   (Ctrl-C to stop)")
+    print(f"report at http://127.0.0.1:{port}/{report}")
     if args.open:
         webbrowser.open(url)
 
@@ -230,6 +305,12 @@ def main():
         print("\nstopping")
     finally:
         server.server_close()
+        # Leave the board calm rather than strobing after we exit.
+        if REPLAY is not None:
+            REPLAY.apply(0, REPLAY.max_seq + 1)
+            REPLAY.reset()
+        if BOARD is not None:
+            BOARD.close()
 
 
 if __name__ == "__main__":

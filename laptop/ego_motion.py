@@ -15,17 +15,17 @@ and the scene happens to be blank". Nor does it give real speed. It answers one
 question - has the picture gone still - and that is exactly what the rolling-stop
 state machine needs.
 
-MOTION_THRESHOLD needs calibrating against real footage; the default is tuned on
-the synthetic test clip. Run test_video.py on a real clip and look at where the
-scores actually sit before trusting it.
+MOTION_THRESHOLD lives in config.py and is calibrated on real footage: on
+IMG_9830 a stopped car tops out at 0.24 and moving starts at 0.31, a gap of only
+25%. Run test_video.py on new footage and look at where the scores actually sit
+before changing it.
 """
 
 from collections import deque
 
 import numpy as np
 
-# Below this shift-in-pixels-per-frame, we call the picture still.
-MOTION_THRESHOLD = 0.25
+from config import MOTION_THRESHOLD  # noqa: F401  (re-exported: callers import it from here)
 
 # Guards against dividing by zero on a completely flat frame.
 MIN_TEXTURE = 0.5

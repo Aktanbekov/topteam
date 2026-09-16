@@ -15,31 +15,10 @@ import argparse
 import sys
 import time
 
-from ego_motion import MOTION_THRESHOLD, EgoMotion
+from config import MIN_STOP_S, MOTION_THRESHOLD  # noqa: F401  (re-exported)
+from drive_review import find_stops  # noqa: F401  (one implementation, used by both)
+from ego_motion import EgoMotion
 from video_source import VideoSource
-
-# Ignore blips shorter than this when reporting stationary windows - a single
-# noisy frame is not a stop.
-MIN_STOP_S = 0.4
-
-
-def find_stops(readings, min_stop_s=MIN_STOP_S):
-    """Collapse per-frame stopped flags into (start, end) windows."""
-    windows = []
-    start = None
-
-    for t, _score, stopped in readings:
-        if stopped and start is None:
-            start = t
-        elif not stopped and start is not None:
-            if t - start >= min_stop_s:
-                windows.append((start, t))
-            start = None
-
-    if start is not None and readings[-1][0] - start >= min_stop_s:
-        windows.append((start, readings[-1][0]))
-
-    return windows
 
 
 def main():

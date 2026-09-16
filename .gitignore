@@ -22,8 +22,15 @@ footage/
 *.avi
 *.mkv
 
+# The demo clips are the exception, and a deliberate one: they are rendered by
+# tools/make_test_clip.py, about 500 KB each, contain no people at all, and are
+# what makes ./run.sh --demo work on a fresh clone. The recorded scene labels
+# beside them are what makes it work with no model server.
+!demo/*.mp4
+
 # --- Generated output (frames, screenshots, reports) ---
 output/
+.pytest_cache/
 frames/
 screenshots/
 reports/

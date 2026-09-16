@@ -4,11 +4,14 @@ Real footage is the goal, but this gives us something repeatable to develop
 against - and the ground truth is exact, so we can tell whether the detector is
 right rather than guessing.
 
-    python tools/make_test_clip.py --profile stop     -> a proper full stop
-    python tools/make_test_clip.py --profile rolling  -> slows but never stops
+    python tools/make_test_clip.py --profile full     -> a 4s stop  (PASS)
+    python tools/make_test_clip.py --profile stop     -> a 1s stop  (BRIEF)
+    python tools/make_test_clip.py --profile rolling  -> never stops (FAIL)
 
 The rolling clip is the one that matters: a correct detector must flag it and
-must NOT flag the stop clip.
+must NOT flag the other two. These are clearly labelled as synthetic wherever
+they are shown - a rendered road is not a drive, and nobody should have to
+squint at the page to work that out.
 """
 
 import argparse
@@ -61,8 +64,20 @@ def shaded(base, delta):
 
 
 # (until_t, speed_at_that_time) - speed ramps linearly between points, m/s.
+#
+# The three profiles line up with the three grades the coach can award, so the
+# demo can show all of them. We have real footage of a brief stop and none at
+# all of a driver running a sign, and we are not going to go and create some.
+#
+#   full     stops for 4.0s  -> meets the 3s coaching target   -> PASS
+#   stop     stops for 1.0s  -> legal but short                -> BRIEF
+#   rolling  never stops     -> possible incomplete stop       -> FAIL
+#
+# Each ramps from 12 m/s and arrives at the sign, 90 m down the road, at about
+# the moment the speed reaches its low point.
 PROFILES = {
-    "stop": [(0, 12), (6, 12), (9, 0), (11, 0), (16, 12), (20, 12)],
+    "full": [(0, 12), (6, 12), (9, 0), (13, 0), (18, 12), (22, 12)],
+    "stop": [(0, 12), (6, 12), (9, 0), (10, 0), (15, 12), (20, 12)],
     "rolling": [(0, 12), (6, 12), (8.5, 3), (10, 3), (14, 12), (20, 12)],
 }
 

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice Drive Report</title>
+<style>
+  :root {
+    --ink: #14181d;
+    --soft: #5b6672;
+    --faint: #8a949f;
+    --line: #dfe3e8;
+    --bg: #ffffff;
+    --tint: #f6f8fa;
+    --green: #1a7f37;
+    --amber: #9a6700;
+    --red: #cf222e;
+    --blue: #0969da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--tint); color: var(--ink);
+    font: 14px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .page { max-width: 860px; margin: 0 auto; background: var(--bg); padding: 40px 48px 56px; }
+
+  .masthead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+              border-bottom: 2px solid var(--ink); padding-bottom: 10px; }
+  .masthead h1 { font-size: 20px; margin: 0; letter-spacing: -.02em; }
+  .masthead .sub { color: var(--soft); font-size: 13px; }
+  .masthead .when { margin-left: auto; color: var(--faint); font-size: 12px; }
+
+  .banner {
+    margin: 18px 0 0; padding: 14px 16px; border-radius: 8px; border: 1px solid var(--line);
+    display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  }
+  .banner.clear, .banner.clear_with_notes { border-color: rgba(26,127,55,.4); background: rgba(26,127,55,.07); }
+  .banner.needs_review { border-color: rgba(207,34,46,.4); background: rgba(207,34,46,.06); }
+  .banner h2 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+  .banner p { margin: 2px 0 0; color: var(--soft); font-size: 13px; }
+  .banner .counts { margin-left: auto; display: flex; gap: 22px; }
+  .banner .counts div { text-align: right; }
+  .banner .counts .n { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .banner .counts .k { font-size: 11px; color: var(--soft); text-transform: uppercase; letter-spacing: .05em; }
+  .n.bad { color: var(--red); } .n.warn { color: var(--amber); } .n.good { color: var(--green); }
+
+  .flag {
+    margin: 14px 0 0; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+    border: 1px solid rgba(154,103,0,.35); background: rgba(154,103,0,.08); color: #6b4900;
+  }
+
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--soft);
+       margin: 30px 0 10px; font-weight: 650; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
+
+  .summary { font-size: 14.5px; }
+  .summary .machine { color: var(--soft); font-size: 12.5px; margin-top: 8px; }
+
+  .finding { display: grid; grid-template-columns: 220px 1fr; gap: 18px; padding: 16px 0;
+             border-bottom: 1px solid var(--line); break-inside: avoid; page-break-inside: avoid; }
+  .finding:last-of-type { border-bottom: 0; }
+  .finding img { width: 100%; border-radius: 6px; border: 1px solid var(--line); display: block; }
+  .finding .noshot { width: 100%; aspect-ratio: 16/9; border-radius: 6px; border: 1px dashed var(--line);
+                     display: grid; place-items: center; color: var(--faint); font-size: 12px; text-align: center; padding: 8px; }
+  .finding .cap { color: var(--faint); font-size: 11.5px; margin-top: 4px; }
+  .finding h4 { margin: 0 0 4px; font-size: 15px; display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+  .pill { font-size: 10.5px; font-weight: 650; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .pill.scored { color: var(--red); border-color: rgba(207,34,46,.4); background: rgba(207,34,46,.07); }
+  .pill.coaching_note { color: var(--amber); border-color: rgba(154,103,0,.4); background: rgba(154,103,0,.08); }
+  .pill.passed { color: var(--green); border-color: rgba(26,127,55,.4); background: rgba(26,127,55,.07); }
+  .pill.warning_only, .pill.experimental, .pill.info { color: var(--soft); }
+  .finding p { margin: 0 0 7px; }
+  .finding .meta { color: var(--soft); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .finding .rule { color: var(--soft); font-size: 12.5px; }
+  .finding .tip { color: var(--blue); font-size: 13px; }
+  .finding .limit { color: var(--faint); font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--soft); font-weight: 600; font-size: 11.5px;
+       text-transform: uppercase; letter-spacing: .05em; padding: 5px 10px 5px 0; }
+  td { padding: 6px 10px 6px 0; vertical-align: top; border-top: 1px solid var(--line); }
+  .status { font-size: 10.5px; font-weight: 650; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .status.active { color: var(--green); border-color: rgba(26,127,55,.4); }
+  .status.warning_only { color: var(--amber); border-color: rgba(154,103,0,.4); }
+  .status.experimental { color: var(--blue); border-color: rgba(9,105,218,.35); }
+  .status.unavailable { color: var(--faint); }
+  .struck { text-decoration: line-through; color: var(--faint); }
+
+  .kvgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 20px; }
+  .kvgrid .k { font-size: 11px; color: var(--soft); text-transform: uppercase; letter-spacing: .05em; }
+  .kvgrid .v { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+  footer { margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--soft); font-size: 12px; }
+  footer ul { padding-left: 18px; margin: 6px 0 12px; }
+  .disclaimer { font-weight: 600; color: var(--ink); }
+
+  .toolbar { position: sticky; top: 0; background: var(--tint); padding: 12px 0; text-align: center; z-index: 2; }
+  .btn { font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--bg);
+         color: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 7px 14px; margin: 0 4px; text-decoration: none; }
+  .btn:hover { border-color: var(--soft); }
+  .empty { color: var(--faint); font-style: italic; }
+
+  @media print {
+    /* The report has to survive Ctrl-P -> Save as PDF, because that is how a
+       parent or an instructor will actually keep it. */
+    body { background: #fff; }
+    .page { max-width: none; padding: 0; }
+    .toolbar { display: none; }
+    h3 { break-after: avoid; page-break-after: avoid; }
+    a[href]::after { content: ""; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <a class="btn" href="player.html">← Back to the review player</a>
+  <button class="btn" onclick="window.print()">Print or save as PDF</button>
+</div>
+
+<div class="page">
+  <div class="masthead">
+    <h1>Practice drive report</h1>
+    <span class="sub" id="clip"></span>
+    <span class="when" id="when"></span>
+  </div>
+
+  <div id="banner"></div>
+  <div id="flags"></div>
+
+  <h3>Summary</h3>
+  <div class="summary" id="summary"></div>
+
+  <h3 id="findingsHead">Findings</h3>
+  <div id="findings"></div>
+
+  <h3>Checks performed</h3>
+  <table id="coverage"></table>
+
+  <h3>Model claims that did not survive cross-checking</h3>
+  <div id="trust"></div>
+
+  <h3>Processing</h3>
+  <div class="kvgrid" id="processing"></div>
+  <p class="finding-note" id="privacy" style="color:var(--soft);font-size:12.5px;margin-top:14px"></p>
+
+  <footer>
+    <strong>Limitations</strong>
+    <ul id="limitations"></ul>
+    <p class="disclaimer" id="disclaimer"></p>
+  </footer>
+</div>
+
+<script>
+const R = /*__REVIEW_DATA__*/null;
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = id => document.getElementById(id);
+
+const D = R.drive, O = R.outcome, P = R.processing;
+
+$("clip").textContent = `${D.file} · ${D.duration_s}s · ${D.width}×${D.height}`;
+$("when").textContent = R.report.generated_at;
+
+$("banner").innerHTML = `<div class="banner ${esc(O.result)}">
+  <div>
+    <h2>${esc(O.headline)}</h2>
+    <p>${esc(O.summary)}</p>
+  </div>
+  <div class="counts">
+    <div><div class="n ${O.critical_findings ? "bad" : "good"}">${O.critical_findings}</div><div class="k">critical</div></div>
+    <div><div class="n ${O.coaching_notes ? "warn" : ""}">${O.coaching_notes}</div><div class="k">coaching</div></div>
+    <div><div class="n good">${O.clean_approaches}</div><div class="k">clean</div></div>
+  </div>
+</div>`;
+
+const flags = [];
+if (D.source !== "real")
+  flags.push(`<strong>${esc(D.source)} footage.</strong> This clip was generated rather
+    than recorded, to demonstrate an outcome we have no real footage of. The analysis
+    of it was a genuine local run.`);
+if (P.replayed)
+  flags.push(`<strong>Replayed scene labels.</strong> ${esc(P.replay_note || "")}`);
+if (P.failed)
+  flags.push(`<strong>${P.failed} model call${P.failed === 1 ? "" : "s"} failed.</strong>
+    Those samples carry no observations, so they can only have cost a detection —
+    they cannot have invented one.`);
+$("flags").innerHTML = flags.map(f => `<p class="flag">${f}</p>`).join("");
+
+$("summary").innerHTML = R.report.narrative
+  ? `<p>${esc(R.report.narrative)}</p>
+     <p class="machine">Written by a local text model from the findings below. The
+     result, the grades and the timestamps are computed, not written.</p>`
+  : `<p>${esc(R.report.summary)}</p>`;
+
+// ------------------------------------------------------------------ findings
+const order = { scored: 0, coaching_note: 1, passed: 2, warning_only: 3, experimental: 4, info: 5 };
+const findings = R.events.slice().sort((a, b) =>
+  (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.detected_at - b.detected_at);
+
+$("findings").innerHTML = findings.length ? findings.map(e => {
+  const shot = e.screenshot
+    ? `<img src="${esc(e.screenshot)}" alt="Evidence frame">
+       <div class="cap">${e.screenshot_exact === false && e.screenshot_offset_s
+         ? `nearest sampled frame, ${Math.abs(e.screenshot_offset_s).toFixed(1)}s ${e.screenshot_offset_s < 0 ? "before" : "after"} the decision`
+         : `frame at ${e.decision_at.toFixed(2)}s`}</div>`
+    : `<div class="noshot">no evidence still saved</div>`;
+  return `<div class="finding">
+    <div>${shot}</div>
+    <div>
+      <h4>${esc(e.title)} <span class="pill ${esc(e.status)}">${esc(e.status.replace(/_/g, " "))}</span></h4>
+      <p class="meta">evidence ${e.evidence_start.toFixed(1)}s – ${e.evidence_end.toFixed(1)}s ·
+        first grounds ${e.detected_at.toFixed(1)}s · decided ${e.decision_at.toFixed(1)}s</p>
+      <p>${esc(e.detail)}</p>
+      <p class="rule"><strong>Rule applied:</strong> ${esc(e.rule)}</p>
+      ${e.tip ? `<p class="tip"><strong>Next time:</strong> ${esc(e.tip)}</p>` : ""}
+      ${e.limitations.length ? `<p class="limit">${e.limitations.map(esc).join(" ")}</p>` : ""}
+    </div>
+  </div>`;
+}).join("") : `<p class="empty">Nothing was detected in this drive.</p>`;
+
+// ------------------------------------------------------------------ coverage
+$("coverage").innerHTML =
+  `<tr><th>Check</th><th>Status</th><th>Scored</th><th>Notes</th></tr>` +
+  R.coverage.map(c => `<tr>
+    <td><strong>${esc(c.label)}</strong></td>
+    <td><span class="status ${esc(c.status)}">${esc(c.status.replace(/_/g, " "))}</span></td>
+    <td>${c.scored ? "yes" : "no"}</td>
+    <td style="color:var(--soft)">${esc(c.note)}</td>
+  </tr>`).join("");
+
+// --------------------------------------------------------------------- trust
+const rejected = R.observations.rejected;
+$("trust").innerHTML = rejected.length
+  ? `<p style="color:var(--soft);font-size:13px;margin-top:0">The vision model answers
+      one frame at a time and cannot correct itself. A real sign, signal or pedestrian
+      lasts several seconds and so appears in consecutive samples; anything reported
+      in only one is dropped before it can be scored or reach the hardware.</p>
+     <table><tr><th>Time</th><th>Claimed</th><th>Why it was dropped</th></tr>` +
+      rejected.map(r => `<tr><td>${r.t.toFixed(1)}s</td>
+        <td class="struck">${esc(r.field.replace(/_/g, " "))} = ${esc(r.value)}</td>
+        <td style="color:var(--soft)">${esc(r.reason)}</td></tr>`).join("") + `</table>`
+  : `<p class="empty">None — every detection in this drive was backed up by a
+     neighbouring sample.</p>`;
+
+// ---------------------------------------------------------------- processing
+$("processing").innerHTML = [
+  ["Model", (P.model || "—").replace(/^qualcomm\//, "")],
+  ["Compute", P.compute_requested ? `${P.compute_requested} (requested)` : "server default"],
+  ["Inference calls", `${P.calls}${P.failed ? ` · ${P.failed} failed` : ""}`],
+  ["Median warm call", P.median_s ? `${P.median_s}s` : "not measured"],
+  ["p95 warm call", P.p95_s ? `${P.p95_s}s` : "not measured"],
+  ["First call (cold)", P.first_call_s ? `${P.first_call_s}s incl. model load` : "—"],
+  ["Total analysis", P.analysis_s ? `${P.analysis_s}s` : "—"],
+  ["Real-time ratio", P.real_time_ratio ? `${P.real_time_ratio}×` : "—"],
+  ["Video uploaded", "none"],
+].map(([k, v]) => `<div><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
+
+$("privacy").textContent = R.privacy.statement +
+  (P.compute_note ? ` Compute: ${P.compute_note}.` : "");
+
+$("limitations").innerHTML = R.limitations.map(l => `<li>${esc(l)}</li>`).join("");
+$("disclaimer").textContent = O.disclaimer;
+document.title = `Practice drive report — ${D.file}`;
+</script>
+</body>
+</html>

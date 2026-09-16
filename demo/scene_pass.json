@@ -1,0 +1,243 @@
+{
+  "schema_version": "1.0",
+  "drive": {
+    "file": "clip_full.mp4",
+    "source": "synthetic",
+    "duration_s": 22.0,
+    "fps": 20.0,
+    "width": 640,
+    "height": 480
+  },
+  "processing": {
+    "model": "qualcomm/Qwen3-VL-4B-Instruct:W4A16",
+    "endpoint": "http://127.0.0.1:18181/v1",
+    "compute_requested": null,
+    "compute_verified": null,
+    "compute_note": "server default (no compute unit requested)",
+    "analysis_s": null,
+    "real_time_ratio": null,
+    "calls": 8,
+    "failed": 0,
+    "first_call_s": null,
+    "median_s": null,
+    "p95_s": null,
+    "min_s": null,
+    "max_s": null,
+    "replayed": true,
+    "replay_note": "Scene labels replayed from a recorded local run of qualcomm/Qwen3-VL-4B-Instruct:W4A16. GenieX was not contacted for this build. The motion track was recomputed from the video just now."
+  },
+  "settings": {
+    "vision_interval_s": 3.0,
+    "motion_threshold": 0.25,
+    "min_stop_s": 0.4,
+    "window_after_s": 10.0,
+    "full_stop_s": 3.0,
+    "min_sign_samples": 2,
+    "sign_gap_tolerance_s": 6.0,
+    "critical_hold_s": 4.0
+  },
+  "samples": [
+    {
+      "t": 0.05,
+      "motion_score": 0.918,
+      "stopped": null,
+      "scene": {
+        "stop_sign": true,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": true,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    },
+    {
+      "t": 3.05,
+      "motion_score": 1.003,
+      "stopped": false,
+      "scene": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    },
+    {
+      "t": 6.05,
+      "motion_score": 1.943,
+      "stopped": false,
+      "scene": {
+        "stop_sign": true,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": true,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": true,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    },
+    {
+      "t": 9.05,
+      "motion_score": 0.04,
+      "stopped": true,
+      "scene": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    },
+    {
+      "t": 12.05,
+      "motion_score": 0.0,
+      "stopped": true,
+      "scene": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    },
+    {
+      "t": 15.05,
+      "motion_score": 0.502,
+      "stopped": false,
+      "scene": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    },
+    {
+      "t": 18.05,
+      "motion_score": 1.005,
+      "stopped": false,
+      "scene": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    },
+    {
+      "t": 21.05,
+      "motion_score": 0.972,
+      "stopped": false,
+      "scene": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "error": null,
+      "frame": null,
+      "confirmed": {
+        "stop_sign": false,
+        "traffic_light": "none",
+        "light_is_for_our_lane": false,
+        "stop_line_visible": false,
+        "pedestrian_in_crosswalk": false,
+        "car_ahead_close": false
+      },
+      "known_at": {}
+    }
+  ],
+  "frames": [],
+  "rejected": [
+    {
+      "t": 6.05,
+      "field": "stop_line_visible",
+      "value": true,
+      "reason": "no neighbouring sample agreed"
+    }
+  ],
+  "grade_expected": "pass"
+}
