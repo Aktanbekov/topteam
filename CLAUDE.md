@@ -125,6 +125,33 @@ so a slower crawl (~1 m/s) would fall below it and be read as a genuine stop —
 violation. Real footage also has sensor noise that lifts the "stopped" floor above 0.00,
 squeezing the gap further. Recalibrate on real video before the demo.
 
+**Confirmed on real footage — IMG_9830.MOV, 1920x1072, 114s (2026-09-15).** The pipeline found
+a real stop sign at 45-60s and a real 1.1s stop at 64.0-65.0s. Verified frame by frame. The
+deceleration curve is clean: 0.57 -> 0.36 -> **0.18 / 0.19 (stopped)** -> 0.31 -> 1.54.
+
+Real-footage score bands, which supersede the synthetic ones:
+
+| state | score |
+|---|---|
+| stopped (engine running, real sensor noise) | 0.07 - 0.24 |
+| just starting to move | 0.31 - 0.40 |
+| normal driving | 0.40 - 1.60 |
+
+`MOTION_THRESHOLD = 0.25` works, but the gap between stopped (0.24 max) and moving (0.31 min)
+is only ~25%. Do not tighten it without re-testing. Note the ceiling is ~1.6 on real video, not
+the ~9 the synthetic clips produced — synthetic footage exaggerates the dynamic range.
+
+**THE STOP SIGN LEAVES THE FRAME BEFORE THE CAR REACHES THE LINE.** This is the single most
+important thing the real video taught us. The sign was visible 45-60s, gone from the forward
+view by 63s (only a sliver at the right edge, which the model did not report), and the car
+stopped at 64-65s. So `stop_sign == true` and `stopped == true` **never co-occur in the same
+frame** — a detector that requires both at once will flag every correct stop as a violation.
+
+The state machine must therefore:
+1. Open an approach window when a stop sign is first seen.
+2. Keep it open for ~8-10 s after the sign disappears, since that is when the stop happens.
+3. Close it on a stop (pass) or when the window expires with no stop (possible violation).
+
 ### 2. Possible red-light violation — feasible but harder
 `traffic_light == red` + `moving == true` is NOT enough — the driver may simply be approaching the light.
 Both halves are required:
@@ -152,6 +179,22 @@ fire a false **critical** error and sink our credibility on stage. Mitigations, 
 2. Make the prompt demand evidence — only report a light if the actual signal housing is visible.
 3. Cross-check against the stop-line rule: no stop line or intersection crossing, no violation.
 4. Consider dropping the traffic-light field entirely on frames where `stop_sign` is true.
+
+**Real footage is better than the synthetic clips suggested, but not clean (2026-09-15).**
+On IMG_9830.MOV the model called `light=red (ours)` through 0-24s and it was **correct** — the
+frames show a red left-arrow and red ball on the mast, with a car stopped ahead. So the
+synthetic hallucination was partly an artefact of crude synthetic imagery, and real red-light
+detection is genuinely viable.
+
+The stop-sign confusion is real though. Across the six samples where the stop sign was visible,
+the model claimed a red light at 45s, 48s and 54s but **not** at 51s, 57s or 60s — flickering
+in and out across a stretch with no traffic light anywhere. That inconsistency is itself the
+signal: a real light does not blink in and out between samples. Requiring agreement across
+consecutive samples would have rejected all three false positives here.
+
+`stop_line_visible` over-triggers badly — it fired on most samples, including at 90s where the
+frame shows only pavement lettering beside a parking-structure wall. Do not lean on it as the
+intersection-crossing test without tightening the prompt first.
 
 ### 3. Unsafe following-distance risk — experimental
 - Qwen's `car_ahead_close` is a subjective answer; never present it as a measured distance.
