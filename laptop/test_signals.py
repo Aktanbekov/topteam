@@ -15,11 +15,13 @@ import requests
 
 from alert_client import LEVEL_MEANING, AlertClient
 
-EXPECTED_LED = {
-    0: "LED off",
-    1: "slow blink",
-    2: "fast blink",
-    3: "rapid strobe",
+# What each level should look like on the three outputs, so you can check the
+# board rather than trust it.
+EXPECTED = {
+    0: "green LED on the strip, calm bar on the matrix, no buzz",
+    1: "amber LED on the strip, still no buzz",
+    2: "one buzz, strip gains a red LED, matrix shows the count",
+    3: "three buzzes, whole strip flashes red, matrix shows a big X",
 }
 
 
@@ -49,9 +51,18 @@ def main():
         )
     print("listener is up\n")
 
+    # The strike count lives on the microcontroller, so it survives between
+    # runs. Clear it or the strip starts half lit from the last test.
+    try:
+        client.reset()
+        print("counter reset\n")
+    except requests.RequestException as exc:
+        sys.exit(f"Failed to reset the counter: {exc}")
+
     for level in sorted(LEVEL_MEANING):
         meaning = LEVEL_MEANING[level]
-        print(f"  level {level}  {meaning:<18} expect: {EXPECTED_LED[level]}")
+        print(f"  level {level}  {meaning:<18}")
+        print(f"           expect: {EXPECTED[level]}")
         try:
             client.send(level)
         except requests.RequestException as exc:

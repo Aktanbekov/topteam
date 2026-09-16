@@ -25,14 +25,14 @@ VALID_LEVELS = (0, 1, 2, 3)
 bridge = ArduinoBridge()
 
 
-def send_to_mcu(level):
-    """Forward a level to the sketch, reconnecting once if the socket died."""
+def send_to_mcu(method, *args):
+    """Forward a call to the sketch, reconnecting once if the socket died."""
     try:
-        bridge.notify("alert", level)
+        bridge.notify(method, *args)
     except BridgeError:
         # One retry: the router may have restarted since our last message.
         bridge.connect()
-        bridge.notify("alert", level)
+        bridge.notify(method, *args)
 
 
 class AlertHandler(BaseHTTPRequestHandler):
@@ -56,7 +56,7 @@ class AlertHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            send_to_mcu(level)
+            send_to_mcu("alert", level)
         except BridgeError as exc:
             self._reply(503, {"error": str(exc)})
             return
@@ -76,11 +76,32 @@ class AlertHandler(BaseHTTPRequestHandler):
             self._handle_alert(params.get("level", [None])[0])
             return
 
-        self._reply(404, {"error": "try /health or /alert?level=0..3"})
+        if parsed.path == "/reset":
+            self._handle_reset()
+            return
+
+        self._reply(404, {"error": "try /health, /alert?level=0..3 or /reset"})
+
+    def _handle_reset(self):
+        """Clear the strike counter the sketch keeps on the microcontroller."""
+        try:
+            send_to_mcu("reset")
+        except BridgeError as exc:
+            self._reply(503, {"error": str(exc)})
+            return
+
+        print("reset -> MCU", flush=True)
+        self._reply(200, {"ok": True, "reset": True})
 
     def do_POST(self):
-        if urlparse(self.path).path != "/alert":
-            self._reply(404, {"error": "POST /alert with {\"level\": 0-3}"})
+        path = urlparse(self.path).path
+
+        if path == "/reset":
+            self._handle_reset()
+            return
+
+        if path != "/alert":
+            self._reply(404, {"error": "POST /alert with {\"level\": 0-3}, or /reset"})
             return
 
         length = int(self.headers.get("Content-Length") or 0)

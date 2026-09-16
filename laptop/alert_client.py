@@ -62,6 +62,16 @@ class AlertClient:
         resp.raise_for_status()
         return resp.json()
 
+    def reset(self):
+        """Clear the board's strike counter. Call this before each drive.
+
+        The count lives on the microcontroller - it counts level-2 transitions
+        itself - so without this it carries over from the previous run.
+        """
+        resp = requests.post(f"{self.base_url}/reset", timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Send one alert level to the UNO Q.")
