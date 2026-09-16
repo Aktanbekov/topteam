@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drive Review</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --line: #2a323d;
+    --text: #e6edf3;
+    --dim: #8b949e;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --blue: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .meta { color: var(--dim); font-size: 13px; }
+  .verdicts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .verdict {
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .verdict.pass { background: rgba(63,185,80,.14); color: var(--green); border-color: rgba(63,185,80,.35); }
+  .verdict.flag { background: rgba(248,81,73,.14); color: var(--red); border-color: rgba(248,81,73,.35); }
+
+  .wrap { padding: 20px; display: grid; gap: 16px; grid-template-columns: minmax(0,1fr) 320px; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+
+  .stage { position: relative; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  video { display: block; width: 100%; height: auto; }
+  .chips { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 80%; }
+  .chip {
+    padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+    background: rgba(13,17,23,.82); border: 1px solid var(--line); backdrop-filter: blur(4px);
+  }
+  .chip.on-sign { color: #fff; background: rgba(248,81,73,.9); border-color: transparent; }
+  .chip.on-red { color: #fff; background: rgba(248,81,73,.75); border-color: transparent; }
+  .chip.on-green { color: #04260d; background: rgba(63,185,80,.9); border-color: transparent; }
+  .chip.on-warn { color: #241a00; background: rgba(210,153,34,.92); border-color: transparent; }
+  .chip.state { color: var(--dim); }
+  .chip.state.stopped { color: var(--green); border-color: rgba(63,185,80,.4); }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; }
+
+  .unoq { display: flex; align-items: center; gap: 14px; }
+  .led {
+    width: 44px; height: 44px; border-radius: 50%; background: #20262e;
+    border: 2px solid var(--line); flex: none;
+  }
+  .led.l0 { background: var(--green); box-shadow: 0 0 16px rgba(63,185,80,.6); }
+  .led.l1 { background: var(--amber); box-shadow: 0 0 16px rgba(210,153,34,.6); animation: blink 1s steps(1,end) infinite; }
+  .led.l2 { background: var(--red); box-shadow: 0 0 16px rgba(248,81,73,.6); animation: blink .3s steps(1,end) infinite; }
+  .led.l3 { background: var(--red); box-shadow: 0 0 22px rgba(248,81,73,.9); animation: blink .12s steps(1,end) infinite; }
+  @keyframes blink { 50% { opacity: .15; } }
+  .level-name { font-weight: 600; }
+  .level-sub { color: var(--dim); font-size: 12px; }
+
+  .readout { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; }
+  .readout dt { color: var(--dim); }
+  .readout dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  #graph { width: 100%; height: 132px; display: block; cursor: pointer; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--dim); margin-top: 8px; flex-wrap: wrap; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+
+  .events { max-height: 340px; overflow-y: auto; margin: -4px -4px -4px 0; padding-right: 4px; }
+  .event {
+    display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left;
+    background: none; border: 0; color: inherit; font: inherit; cursor: pointer;
+    padding: 7px 8px; border-radius: 6px;
+  }
+  .event:hover { background: var(--panel-2); }
+  .event.active { background: var(--panel-2); outline: 1px solid var(--line); }
+  .event time { color: var(--dim); font-variant-numeric: tabular-nums; flex: none; width: 46px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; align-self: center; }
+  .dot.sign { background: var(--amber); }
+  .dot.pass { background: var(--green); }
+  .dot.fail { background: var(--red); }
+  .dot.stop { background: var(--blue); }
+  .dot.light { background: var(--red); }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="clip">Drive Review</h1>
+  <span class="meta" id="meta"></span>
+  <div class="verdicts" id="verdicts"></div>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="stage">
+      <video id="video" controls preload="metadata"></video>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h2>Timeline</h2>
+      <canvas id="graph"></canvas>
+      <div class="legend">
+        <span><span class="swatch" style="background:#58a6ff"></span>motion score</span>
+        <span><span class="swatch" style="background:rgba(63,185,80,.35)"></span>stationary</span>
+        <span><span class="swatch" style="background:rgba(210,153,34,.30)"></span>stop sign visible</span>
+        <span><span class="swatch" style="background:#8b949e"></span>stopped threshold</span>
+      </div>
+      <p class="hint">Click the graph to jump. Space plays and pauses; arrow keys step 5s.</p>
+    </div>
+  </div>
+
+  <div style="display:grid; gap:16px; align-content:start">
+    <div class="panel">
+      <h2>UNO Q signal</h2>
+      <div class="unoq">
+        <div class="led" id="led"></div>
+        <div>
+          <div class="level-name" id="levelName">—</div>
+          <div class="level-sub" id="levelSub"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Live readout</h2>
+      <dl class="readout">
+        <dt>time</dt><dd id="rTime">0.0s</dd>
+        <dt>motion</dt><dd id="rScore">—</dd>
+        <dt>state</dt><dd id="rState">—</dd>
+        <dt>light</dt><dd id="rLight">—</dd>
+      </dl>
+    </div>
+
+    <div class="panel">
+      <h2>Events</h2>
+      <div class="events" id="events"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = /*__DRIVE_DATA__*/null;
+
+const LEVELS = [
+  ["Driving fine", "green LED"],
+  ["Heads up", "yellow LED + short buzz"],
+  ["Minor mistake", "red LED + long buzz"],
+  ["Critical", "red flashing + 3 buzzes"],
+];
+
+const video = document.getElementById("video");
+const graph = document.getElementById("graph");
+const ctx = graph.getContext("2d");
+
+video.src = DATA.video;
+document.getElementById("clip").textContent = DATA.name;
+document.getElementById("meta").textContent =
+  `${DATA.meta.width}x${DATA.meta.height} · ${DATA.meta.fps}fps · ${DATA.meta.duration}s · threshold ${DATA.threshold}`;
+
+// --- verdict badges -------------------------------------------------------
+document.getElementById("verdicts").innerHTML = DATA.verdicts.length
+  ? DATA.verdicts.map(v => {
+      const cls = v.stopped ? "pass" : "flag";
+      const label = v.stopped
+        ? `Stop sign ${v.start.toFixed(0)}s — full stop (${v.stop_len.toFixed(1)}s)`
+        : `Stop sign ${v.start.toFixed(0)}s — possible incomplete stop`;
+      return `<span class="verdict ${cls}">${label}</span>`;
+    }).join("")
+  : `<span class="verdict pass">No stop signs detected</span>`;
+
+// --- events ---------------------------------------------------------------
+const eventsEl = document.getElementById("events");
+eventsEl.innerHTML = DATA.events.map((e, i) =>
+  `<button class="event" data-i="${i}" data-t="${e.t}">
+     <time>${e.t.toFixed(1)}s</time>
+     <span class="dot ${e.kind}"></span>
+     <span>${e.text}</span>
+   </button>`).join("");
+eventsEl.addEventListener("click", ev => {
+  const btn = ev.target.closest(".event");
+  if (btn) { video.currentTime = parseFloat(btn.dataset.t); video.play(); }
+});
+
+// --- lookups --------------------------------------------------------------
+function lastAtOrBefore(arr, t, key) {
+  let lo = 0, hi = arr.length - 1, best = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = key ? arr[mid][key] : arr[mid][0];
+    if (v <= t) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return best;
+}
+
+function sceneAt(t) {
+  const i = lastAtOrBefore(DATA.samples, t, "t");
+  return i < 0 ? null : DATA.samples[i];
+}
+function scoreAt(t) {
+  const i = lastAtOrBefore(DATA.motion, t, null);
+  return i < 0 ? null : DATA.motion[i][1];
+}
+function inAnyStop(t) {
+  return DATA.stops.some(([a, b]) => t >= a && t <= b);
+}
+
+// --- graph ----------------------------------------------------------------
+let maxScore = 1;
+for (const [, s] of DATA.motion) if (s > maxScore) maxScore = s;
+const yMax = maxScore * 1.1;
+
+function resizeGraph() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = graph.clientWidth, h = graph.clientHeight;
+  graph.width = w * dpr; graph.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawGraph();
+}
+
+function drawGraph() {
+  const w = graph.clientWidth, h = graph.clientHeight;
+  const dur = DATA.meta.duration || 1;
+  const X = t => (t / dur) * w;
+  const Y = s => h - (s / yMax) * (h - 8) - 4;
+
+  ctx.clearRect(0, 0, w, h);
+
+  for (const [a, b] of DATA.stops) {
+    ctx.fillStyle = "rgba(63,185,80,.22)";
+    ctx.fillRect(X(a), 0, Math.max(1.5, X(b) - X(a)), h);
+  }
+  for (const v of DATA.verdicts) {
+    ctx.fillStyle = "rgba(210,153,34,.20)";
+    ctx.fillRect(X(v.start), 0, Math.max(2, X(v.end) - X(v.start)), h);
+    ctx.strokeStyle = v.stopped ? "rgba(63,185,80,.5)" : "rgba(248,81,73,.6)";
+    ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X(v.deadline), 0); ctx.lineTo(X(v.deadline), h); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.strokeStyle = "rgba(139,148,158,.55)";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, Y(DATA.threshold)); ctx.lineTo(w, Y(DATA.threshold)); ctx.stroke();
+
+  ctx.strokeStyle = "#58a6ff";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  DATA.motion.forEach(([t, s], i) => i ? ctx.lineTo(X(t), Y(s)) : ctx.moveTo(X(t), Y(s)));
+  ctx.stroke();
+
+  const t = video.currentTime || 0;
+  ctx.strokeStyle = "#e6edf3"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(X(t), 0); ctx.lineTo(X(t), h); ctx.stroke();
+}
+
+graph.addEventListener("click", e => {
+  const r = graph.getBoundingClientRect();
+  video.currentTime = ((e.clientX - r.left) / r.width) * DATA.meta.duration;
+});
+
+// --- live update ----------------------------------------------------------
+const chipsEl = document.getElementById("chips");
+const led = document.getElementById("led");
+
+function update() {
+  const t = video.currentTime || 0;
+  const sample = sceneAt(t);
+  const score = scoreAt(t);
+  const stopped = inAnyStop(t);
+
+  document.getElementById("rTime").textContent = t.toFixed(1) + "s";
+  document.getElementById("rScore").textContent = score === null ? "—" : score.toFixed(2);
+  document.getElementById("rState").textContent = stopped ? "stopped" : "moving";
+
+  const chips = [`<span class="chip state ${stopped ? "stopped" : ""}">${stopped ? "STOPPED" : "moving"}</span>`];
+  let light = "—";
+
+  if (sample) {
+    const s = sample.scene;
+    if (s.stop_sign) chips.push(`<span class="chip on-sign">STOP SIGN</span>`);
+    if (s.traffic_light !== "none") {
+      light = s.traffic_light + (s.light_is_for_our_lane ? " (ours)" : " (not ours)");
+      const cls = s.traffic_light === "green" ? "on-green"
+                : s.traffic_light === "red" ? "on-red" : "on-warn";
+      chips.push(`<span class="chip ${cls}">${light.toUpperCase()}</span>`);
+    }
+    if (s.pedestrian_in_crosswalk) chips.push(`<span class="chip on-warn">PEDESTRIAN</span>`);
+    if (s.car_ahead_close) chips.push(`<span class="chip on-warn">CAR AHEAD CLOSE</span>`);
+    if (s.stop_line_visible) chips.push(`<span class="chip">stop line</span>`);
+  }
+
+  document.getElementById("rLight").textContent = light;
+  chipsEl.innerHTML = chips.join("");
+
+  const level = sample ? sample.level : 0;
+  led.className = "led l" + level;
+  document.getElementById("levelName").textContent = `Level ${level} — ${LEVELS[level][0]}`;
+  document.getElementById("levelSub").textContent = LEVELS[level][1];
+
+  let activeIdx = -1;
+  DATA.events.forEach((e, i) => { if (e.t <= t + 0.25) activeIdx = i; });
+  document.querySelectorAll(".event").forEach(el => {
+    el.classList.toggle("active", parseInt(el.dataset.i, 10) === activeIdx);
+  });
+
+  drawGraph();
+}
+
+video.addEventListener("timeupdate", update);
+video.addEventListener("seeked", update);
+video.addEventListener("loadedmetadata", update);
+window.addEventListener("resize", resizeGraph);
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space") { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+  if (e.code === "ArrowRight") video.currentTime += 5;
+  if (e.code === "ArrowLeft") video.currentTime -= 5;
+});
+
+resizeGraph();
+update();
+</script>
+</body>
+</html>
