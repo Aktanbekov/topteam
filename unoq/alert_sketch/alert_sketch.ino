@@ -3,7 +3,7 @@
  *
  * Drives three things from one alert level sent by the Linux side:
  *
- *   built-in 8x13 LED matrix   the strike count, and a big X on a critical error
+ *   built-in 8x13 LED matrix   strike count, and a big X on a critical error
  *   Modulino Pixels (0x6C)     8 RGB LEDs: colour = severity, lit = strikes
  *   Modulino Vibro  (0x70)     a buzz you feel without looking
  *
@@ -13,60 +13,70 @@
  *   0 = driving fine      green,  no buzz
  *   1 = heads up          amber,  no buzz      (see "why level 1 is silent")
  *   2 = minor mistake     red,    one buzz,    strike count +1
- *   3 = critical mistake  red X,  three buzzes
+ *   3 = critical mistake  red X,  three buzzes, ramping
  *
- * Nothing here blocks. delay() would stall the bridge and make the board miss
- * the next alert, so every animation is driven off millis().
+ * Every library call here matches the hardware test sketch that is known to
+ * work on this board. The one thing that differs: nothing below blocks.
+ * delay() would stall the bridge and make the board miss the next alert, so
+ * the animations run off millis() and buzzes are queued.
  */
 
 #include "Arduino_RouterBridge.h"
-#include "Arduino_LED_Matrix.h"
-#include "Modulino.h"
+#include <Arduino_LED_Matrix.h>
+#include <Arduino_Modulino.h>
 
 // ---------------------------------------------------------------- hardware
-// Arduino_LED_Matrix is built into the Arduino Zephyr Core that the UNO Q uses.
-// Do NOT install it from the library manager - it is not there, and it does not
-// need to be. The header also typedefs ArduinoLEDMatrix to the same class, so
-// either spelling compiles.
-Arduino_LED_Matrix matrix;
-ModulinoPixels strip;
+// Arduino_LED_Matrix ships inside the Arduino Zephyr Core the UNO Q runs on -
+// it is NOT in the library manager and does not need to be. Modulino is the
+// only library to install.
+ArduinoLEDMatrix matrix;
+ModulinoPixels pixels;
 ModulinoVibro vibro;
 
 // Written out rather than read from the class: canvasWidth/canvasHeight are
-// private members, and only exist at all when ArduinoGraphics is present.
+// private members of Arduino_LED_Matrix, so they will not compile.
 const int COLS = 13;
 const int ROWS = 8;
+const int PIXEL_COUNT = ROWS * COLS;  // 104
 
-uint8_t frame[ROWS * COLS];
+uint8_t frame[PIXEL_COUNT];
 
-// draw() feeds matrixGrayscaleWrite(), so the buffer is brightness, not on/off.
-// setGrayscaleBits(8) in setup() makes 255 the top value, so this is full
-// brightness. Writing 1 here would be very nearly invisible.
-const uint8_t PIXEL_ON = 0xFF;
-const uint8_t GRAYSCALE_BITS = 8;
+// 1 is what the working hardware test writes, so that is what we write. If
+// shapes ever look too dim, matrix.setGrayscaleBits() changes the scale and
+// this becomes the top value for it.
+const uint8_t PIXEL_ON = 1;
+
+// How bright the strip sits. Low enough not to dazzle at night.
+const uint8_t LED_DIM = 20;
+const uint8_t LED_BRIGHT = 40;
 
 // ------------------------------------------------------------------ state
-// Set from the Linux side, read by loop(). The count lives here rather than on
-// the laptop so the existing alert(level) protocol did not have to change.
+// Set from the Linux side, read by loop(). The strike count lives here rather
+// than on the laptop, so the existing alert(level) protocol did not change.
 volatile int currentLevel = 0;
 int strikes = 0;
 int lastLevel = 0;
 
-// How many minor mistakes before the strip is full. The brief allows 15 DMV
-// minors, but 8 LEDs read better as the simplified "3 strikes" practice mode.
+// How many minor mistakes fill the display. The brief allows 15 DMV minors,
+// but 8 LEDs read better as the simplified "3 strikes" practice mode.
 const int MAX_STRIKES = 3;
 
-// ------------------------------------------------------------- animations
-// A buzz is a burst of short pulses. We queue them and let loop() play them
-// out, so alert() returns immediately and the bridge stays responsive.
-int pulsesLeft = 0;
+// ------------------------------------------------------------------ buzzes
+// A buzz is a burst of pulses, played out by loop() so alert() can return at
+// once and the bridge stays responsive.
+const int MAX_PULSES = 3;
+VibroPowerLevel pulsePower[MAX_PULSES];
+unsigned long pulseLen[MAX_PULSES];
+int pulseCount = 0;
+int pulseIndex = 0;
 unsigned long nextPulseAt = 0;
-const unsigned long PULSE_MS = 120;
-const unsigned long PULSE_GAP_MS = 180;
 
-// After a new strike the matrix shows the number for a moment, then goes back
-// to the calm bar. Reading digits while driving is a bad idea; a brief
-// confirmation right after the event is not.
+const unsigned long PULSE_GAP_MS = 160;
+
+// ------------------------------------------------------------- animations
+// After a new strike the matrix shows the number briefly, then returns to the
+// bar. Reading digits at speed is a bad idea; a short confirmation right after
+// the event is not.
 unsigned long showCountUntil = 0;
 const unsigned long COUNT_MS = 2000;
 
@@ -74,8 +84,7 @@ unsigned long lastBlinkAt = 0;
 bool blinkOn = false;
 
 // ------------------------------------------------------------------ digits
-// 3x5 font, one byte per row, low 3 bits are the pixels. Written out rather
-// than pulled from the library's fonts.h so you can see exactly what it draws.
+// 3x5 font, one byte per row, low 3 bits are the pixels.
 const uint8_t DIGITS[10][5] = {
   {0b111, 0b101, 0b101, 0b101, 0b111},  // 0
   {0b010, 0b110, 0b010, 0b010, 0b111},  // 1
@@ -90,7 +99,9 @@ const uint8_t DIGITS[10][5] = {
 };
 
 void clearFrame() {
-  memset(frame, 0, sizeof(frame));
+  for (int i = 0; i < PIXEL_COUNT; i++) {
+    frame[i] = 0;
+  }
 }
 
 void setPixel(int row, int col) {
@@ -115,7 +126,7 @@ void drawDigit(int value, int col) {
 
 void drawNumber(int value) {
   if (value < 10) {
-    drawDigit(value, 5);            // one digit, centred
+    drawDigit(value, 5);              // one digit, centred
   } else {
     drawDigit((value / 10) % 10, 3);  // two digits with a gap
     drawDigit(value % 10, 7);
@@ -127,9 +138,9 @@ void drawNumber(int value) {
 void drawBar(int used, int total) {
   int filled = (total <= 0) ? 0 : (used * COLS) / total;
   for (int c = 0; c < COLS; c++) {
-    setPixel(3, c);                 // the empty track
+    setPixel(3, c);  // the empty track
     if (c < filled) {
-      setPixel(2, c);               // thicken what is used
+      setPixel(2, c);  // thicken what is used
       setPixel(4, c);
     }
   }
@@ -143,21 +154,19 @@ void drawCross() {
 }
 
 // ------------------------------------------------------------------ strip
-// Colour carries severity, the number lit carries the strike count. One glance,
-// two facts, no counting.
-void updateStrip(int level) {
-  strip.clear();
-
-  const uint8_t dim = 12;  // bright enough at night, not dazzling
+// Colour carries severity, the number lit carries the strike count. One
+// glance, two facts, no counting.
+void updatePixels(int level) {
+  pixels.clear();
 
   if (level >= 3) {
     // Critical: the whole strip flashes. Unmissable in peripheral vision.
     if (blinkOn) {
       for (int i = 0; i < 8; i++) {
-        strip.set(i, RED, 25);
+        pixels.set(i, 255, 0, 0, LED_BRIGHT);
       }
     }
-    strip.show();
+    pixels.show();
     return;
   }
 
@@ -165,64 +174,91 @@ void updateStrip(int level) {
   if (lit > 8) {
     lit = 8;
   }
-
   for (int i = 0; i < lit; i++) {
-    strip.set(i, RED, dim);
+    pixels.set(i, 255, 0, 0, LED_DIM);
   }
 
   // One leading LED shows what is happening right now.
   if (lit < 8) {
     if (level >= 2) {
-      strip.set(lit, RED, 25);
+      pixels.set(lit, 255, 0, 0, LED_BRIGHT);
     } else if (level == 1) {
-      strip.set(lit, 255, 150, 0, dim);   // amber - heads up
+      pixels.set(lit, 255, 120, 0, LED_DIM);  // amber - heads up
     } else {
-      strip.set(lit, GREEN, dim);
+      pixels.set(lit, 0, 255, 0, LED_DIM);    // green - driving fine
     }
   }
 
-  strip.show();
+  pixels.show();
 }
 
 // ------------------------------------------------------------------ buzzes
-void queueBuzz(int pulses) {
-  pulsesLeft = pulses;
+void queueBuzz(const VibroPowerLevel *powers, const unsigned long *lengths, int n) {
+  if (n > MAX_PULSES) {
+    n = MAX_PULSES;
+  }
+  for (int i = 0; i < n; i++) {
+    pulsePower[i] = powers[i];
+    pulseLen[i] = lengths[i];
+  }
+  pulseCount = n;
+  pulseIndex = 0;
   nextPulseAt = millis();
 }
 
 void serviceBuzz() {
-  if (pulsesLeft <= 0) {
+  if (pulseIndex >= pulseCount) {
     return;
   }
   unsigned long now = millis();
   if (now < nextPulseAt) {
     return;
   }
-  // block = false, so this returns straight away and the motor runs on its own
-  // STM32. Power defaults to the library's MAXIMUM.
-  vibro.on(PULSE_MS, false);
-  pulsesLeft--;
-  nextPulseAt = now + PULSE_MS + PULSE_GAP_MS;
+  // on(len_ms, VibroPowerLevel) is the non-blocking overload - it posts the
+  // length to the Vibro's own STM32 and returns immediately.
+  vibro.on(pulseLen[pulseIndex], pulsePower[pulseIndex]);
+  nextPulseAt = now + pulseLen[pulseIndex] + PULSE_GAP_MS;
+  pulseIndex++;
+}
+
+// One firm pulse for a minor mistake.
+void buzzMinor() {
+  const VibroPowerLevel powers[] = {MEDIUM};
+  const unsigned long lengths[] = {160};
+  queueBuzz(powers, lengths, 1);
+}
+
+// Three pulses that build. Ramping rather than three identical hits means the
+// driver is alerted, not startled - startling a learner is its own hazard.
+void buzzCritical() {
+  const VibroPowerLevel powers[] = {GENTLE, INTENSE, MAXIMUM};
+  const unsigned long lengths[] = {120, 160, 260};
+  queueBuzz(powers, lengths, 3);
 }
 
 // -------------------------------------------------------------------- main
 void setup() {
   matrix.begin();
-  matrix.setGrayscaleBits(GRAYSCALE_BITS);
-
-  Modulino.begin();
-  strip.begin();
-  vibro.begin();
-
   clearFrame();
   matrix.draw(frame);
-  updateStrip(0);
+
+  Modulino.begin();
+
+  Monitor.begin();
+
+  // Say which modules answered. If one is missing this is the line that tells
+  // you, instead of a silent board you have to guess about.
+  Monitor.print("Vibro: ");
+  Monitor.println(vibro.begin() ? "found" : "NOT FOUND - check the Qwiic cable");
+  Monitor.print("Pixels: ");
+  Monitor.println(pixels.begin() ? "found" : "NOT FOUND - check the Qwiic cable");
+
+  updatePixels(0);
 
   Bridge.begin();
   Bridge.provide("alert", alert);
   Bridge.provide("reset", resetDrive);
 
-  Monitor.begin();
   Monitor.println("alert sketch ready - levels 0-3, reset() clears the count");
 }
 
@@ -255,7 +291,7 @@ void loop() {
   }
   matrix.draw(frame);
 
-  updateStrip(level);
+  updatePixels(level);
 }
 
 // Called from the Linux side via the Arduino Router Bridge.
@@ -265,9 +301,9 @@ void alert(int level) {
   if (level == 2 && lastLevel != 2) {
     strikes++;
     showCountUntil = millis() + COUNT_MS;
-    queueBuzz(1);
+    buzzMinor();
   } else if (level == 3 && lastLevel != 3) {
-    queueBuzz(3);
+    buzzCritical();
   }
 
   lastLevel = level;
@@ -284,7 +320,8 @@ void resetDrive() {
   strikes = 0;
   lastLevel = 0;
   currentLevel = 0;
-  pulsesLeft = 0;
+  pulseCount = 0;
+  pulseIndex = 0;
   showCountUntil = 0;
   vibro.off();
   Monitor.println("counter reset");

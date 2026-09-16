@@ -36,7 +36,7 @@ before blaming the code.
 
 **Don't look for `Arduino_LED_Matrix` in the library manager — it isn't there.**
 It ships inside the Arduino Zephyr Core that the UNO Q runs on, so `#include
-"Arduino_LED_Matrix.h"` just works. Either spelling of the class compiles; the
+<Arduino_LED_Matrix.h>` just works. Either spelling of the class compiles; the
 header typedefs `ArduinoLEDMatrix` to `Arduino_LED_Matrix`.
 
 What does *not* carry over from UNO R4 examples is `canvasWidth` /
@@ -46,14 +46,30 @@ ArduinoGraphics is present. Write 13 and 8.
 The header is worth reading if the matrix misbehaves:
 `C:\Users\<you>\AppData\Local\Arduino15\packages\arduino\hardware\zephyr\1.0.0\libraries\Arduino_LED_Matrix\src\`
 
+## Known-good baseline
+
+[`hardware_test/hardware_test.ino`](hardware_test/hardware_test.ino) exercises
+all three outputs with no bridge, no network and no laptop. **Deploy it first
+after any wiring change.** If it passes and `alert_sketch.ino` does not, the
+problem is our code, not the modules.
+
+It is also the API reference — `alert_sketch.ino` is written to match its calls
+exactly. The one thing it does that the alert sketch must never do is use
+blocking `delay()`, which would stall the router bridge.
+
 The sketch registers two functions, `alert(int level)` and `reset()`:
 
 | level | meaning | strip (8 RGB) | vibration | matrix |
 |---|---|---|---|---|
 | 0 | driving fine | green | — | calm bar |
 | 1 | heads up | amber | — | calm bar |
-| 2 | minor mistake | +1 red | one buzz | count for 2s |
-| 3 | critical mistake | all flash red | three buzzes | big X |
+| 2 | minor mistake | +1 red | one `MEDIUM` pulse | count for 2s |
+| 3 | critical mistake | all flash red | `GENTLE`→`INTENSE`→`MAXIMUM` | big X |
+
+The critical buzz **ramps** rather than hitting three identical times. The
+driver should be alerted, not startled — startling a learner at the wheel is a
+hazard of its own. The full scale is `STOP, GENTLE, MODERATE, MEDIUM, INTENSE,
+POWERFUL, MAXIMUM` if you want to retune it.
 
 **Why level 1 is silent.** The brief has it buzzing at every stop sign. Don't. If
 it buzzes at every junction the driver tunes it out within ten minutes, and then
