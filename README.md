@@ -239,7 +239,14 @@ Everything is one command, from **Git Bash** on Windows:
 ```
 
 That starts GenieX on the NPU if nothing is listening, analyses the video in the
-project root, builds the player and the report, and opens it.
+project root, builds the player and the report, serves them on localhost and
+opens the player in your browser. Ctrl-C stops the server — and returns the
+board to level 0 if one is attached.
+
+The page is always served rather than opened from disk. A `file://` page has no
+origin to post level changes to, so the hardware could never work from one, and
+Chrome and Edge refuse to play a video from `file://` often enough that it is
+not worth the caveat. `--no-serve` gives you the old behaviour if you want it.
 
 No footage to hand? Every outcome has a demo:
 
@@ -266,6 +273,7 @@ Other flags:
 | `--compute cpu` | ask GenieX for a different compute unit |
 | `--full-stop 2` | change how long a stop must last to count as full |
 | `--calm` | stop the board flashing and exit — nothing else |
+| `--no-serve` | open the page from disk instead of serving it |
 | `--window-after 12` | how long after the sign leaves the frame to keep looking |
 
 Run the tests — no model, no board, no video needed:
@@ -387,7 +395,7 @@ archive/             the superseded HTTP-over-Wi-Fi transport, and why
 | symptom | cause and fix |
 |---|---|
 | `Python was not found` from Git Bash | the Microsoft Store stub. `run.sh` works around it by actually running an import; call scripts through `run.sh` or use the full path under `%LOCALAPPDATA%\Programs\Python\Python312-arm64`. |
-| The video will not play in the browser | Chrome and Edge refuse `.mov` even when the video inside is H.264. `make_player.py` rewraps it as MP4 by stream copy automatically. If it still fails, serve it: `python tools/serve_player.py --open`. |
+| The video will not play in the browser | Chrome and Edge refuse `.mov` even when the video inside is H.264. `make_player.py` rewraps it as MP4 by stream copy automatically. `run.sh` also serves the page over http rather than `file://`, which is the other half of this problem. |
 | Frames arrive sideways | phone rotation flags are not applied on decode. Film in landscape, or pass `--rotate 90\|180\|270`. |
 | `secure_mkdirs failed` on `adb push` | Git Bash rewrote `/home/arduino/...` into a Windows path. Prefix with `MSYS_NO_PATHCONV=1`. |
 | Board connected but nothing moves | `mcu_ping` is the only call that proves the *sketch* is running — the others only prove the router took the bytes. Check the hardware panel on the page. |

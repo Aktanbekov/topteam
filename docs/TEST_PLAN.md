@@ -123,7 +123,8 @@ gap is 0.24 to 0.31 — only 25% — so do not tighten 0.25 without re-running t
 | GenieX down | stop the server, `./run.sh --demo fail` | falls back to recorded scene labels, amber "replayed labels" banner, no NPU badge |
 | failed model calls | stop GenieX mid-run | those samples carry no observations; page says so; **no fabricated detections** |
 | no narrative model | it is not pulled | report renders the deterministic summary; no error |
-| unplayable video | open `player.html` from `file://` | page still works, notice appears, report unaffected |
+| unplayable video | `./run.sh --reuse --no-serve` (opens from `file://`) | page still works, notice appears, report unaffected |
+| player opens | any `./run.sh` | it serves on localhost and opens the browser itself; the URL it prints is the port it actually bound, not the one it asked for |
 | no board | omit `--unoq` | hardware panel says "not connected"; everything else works |
 | board stuck flashing | end a `--demo fail` run, then `./run.sh --calm` | board returns to green; a later `./run.sh` also calms an idle board at startup |
 

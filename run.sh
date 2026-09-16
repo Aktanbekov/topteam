@@ -11,6 +11,7 @@
 #   ./run.sh --demo fail         a short clip that ends in a critical error
 #   ./run.sh --demo pass --unoq  the clean run, with the board attached
 #   ./run.sh --calm              stop the board flashing and exit
+#   ./run.sh --no-serve          open the page from disk instead of serving it
 #
 # Demo grades: pass (full stop), brief (short but legal), fail (no stop at all).
 # They use synthetic clips, analysed for real by the local model, because we
@@ -33,6 +34,7 @@ COMPUTE=npu
 REUSE=0
 UNOQ=0
 CALM=0
+NO_SERVE=0
 DEMO=""
 VIDEO=""
 FULL_STOP=""
@@ -52,12 +54,13 @@ while [ $# -gt 0 ]; do
     --reuse) REUSE=1; shift ;;
     --unoq) UNOQ=1; shift ;;
     --calm) CALM=1; shift ;;
+    --no-serve) NO_SERVE=1; shift ;;
     --every) VISION_EVERY="$2"; shift 2 ;;
     --compute) COMPUTE="$2"; shift 2 ;;
     --demo) DEMO="$2"; shift 2 ;;
     --full-stop) FULL_STOP="$2"; shift 2 ;;
     --window-after) WINDOW_AFTER="$2"; shift 2 ;;
-    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 1 ;;
     *) VIDEO="$1"; shift ;;
   esac
@@ -324,33 +327,50 @@ if [ "$UNOQ" = "1" ]; then
 fi
 
 # --------------------------------------------------------------------- open
-if [ "$UNOQ" = "1" ]; then
-  # The page has to be SERVED, not opened from disk: it posts level changes
-  # back to its own origin and serve_player relays them to the board. A
-  # file:// page has no origin to post to, so the hardware would sit idle.
-  say "Serving the player and driving the hardware"
-  echo "    http://127.0.0.1:$PLAYER_PORT/$PLAYER"
-  echo "    Ctrl-C to stop"
-  echo
-  exec "$PY" -u tools/serve_player.py --port "$PLAYER_PORT" --page "$PLAYER" --open --unoq
-fi
-
-say "Opening $PLAYER"
-
-if command -v cygpath >/dev/null 2>&1; then
-  cmd //c start "" "$(cygpath -w "$PLAYER")" || true   # Git Bash on Windows
-elif command -v open >/dev/null 2>&1; then
-  open "$PLAYER"                                        # macOS
-elif command -v xdg-open >/dev/null 2>&1; then
-  xdg-open "$PLAYER"                                    # Linux
-else
-  echo "    open it yourself: $(pwd)/$PLAYER"
-fi
-
+# The page is always SERVED and opened over http, whether or not the board is
+# attached. It used to be opened from disk unless you asked for --unoq, and that
+# split caused more trouble than it saved:
+#
+#   * a file:// page has no origin to post to, so the hardware sits idle and the
+#     hardware panel can never say anything useful;
+#   * Chrome and Edge refuse to play a video from file:// often enough that the
+#     README needed a footnote telling you to serve it instead;
+#   * the report link and the evidence stills are relative paths, which behave
+#     differently from disk.
+#
+# Serving costs nothing and makes all three work, so there is one path now.
 echo
 echo "  report:  $OUT_DIR/report.html      (printable, Ctrl-P to save as PDF)"
 echo "  data:    $OUT_DIR/review.json      (every fact behind the page)"
+
+if [ "$NO_SERVE" = "1" ]; then
+  say "Opening $PLAYER from disk (--no-serve)"
+  warn "The video may not play and the hardware panel cannot work from file://."
+  if command -v cygpath >/dev/null 2>&1; then
+    cmd //c start "" "$(cygpath -w "$PLAYER")" || true   # Git Bash on Windows
+  elif command -v open >/dev/null 2>&1; then
+    open "$PLAYER"                                        # macOS
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$PLAYER"                                    # Linux
+  else
+    echo "    open it yourself: $(pwd)/$PLAYER"
+  fi
+  echo
+  echo "To serve it properly instead:  ./run.sh --reuse"
+  exit 0
+fi
+
+SERVE_ARGS=(--port "$PLAYER_PORT" --page "$PLAYER" --open)
+if [ "$UNOQ" = "1" ]; then
+  say "Serving the player and driving the hardware"
+  SERVE_ARGS+=(--unoq)
+else
+  say "Serving the player"
+fi
+echo "    Ctrl-C to stop (that is also what returns the board to level 0)"
 echo
-echo "If the video will not play, serve it over localhost instead:"
-echo "    $PY tools/serve_player.py --page $PLAYER --open"
-echo "To drive the UNO Q as it plays:  ./run.sh --reuse --unoq"
+
+# exec, so Ctrl-C reaches the server directly and its shutdown actually runs.
+# The URL is printed by serve_player itself, once it knows which port it got -
+# printing it here would be a guess, and a wrong one whenever the port steps.
+exec "$PY" -u tools/serve_player.py "${SERVE_ARGS[@]}"
