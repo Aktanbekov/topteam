@@ -411,20 +411,55 @@ LED matrix shows the minor-error count, e.g. "4/15".
 One command, from **Git Bash** (installed with Git for Windows):
 
 ```bash
-./run.sh                  # analyse the video in the project root, open the player
-./run.sh clips/drive2.mov # a specific file
-./run.sh --reuse          # skip the vision pass, just rebuild the player
-./run.sh --every 5        # sample the vision model every 5s instead of 3
+./run.sh                    # analyse the video in the project root, open the player
+./run.sh clips/drive2.mov   # a specific file
+./run.sh --reuse            # skip the vision pass, just rebuild the player + report
+./run.sh --unoq             # also drive the board over USB as the video plays
+./run.sh --every 5          # sample the vision model every 5s instead of 3
+./run.sh --compute cpu      # ask GenieX for a different compute unit (default npu)
+./run.sh --demo fail        # synthetic clip that ends in a critical error
+./run.sh --full-stop 2      # how long a stop must last to count as full
+./run.sh --window-after 12  # how long after the sign leaves the frame to keep looking
+./run.sh --calm             # stop the board flashing and exit, nothing else
+./run.sh --no-serve         # open the page from disk instead of serving it
 ```
 
-It starts `geniex serve` if nothing is listening, analyses the drive, builds the player and
-opens it. The vision pass is the slow part (~1 call per sample at ~2.7s); `--reuse` skips it
-when you are only changing the player or the motion threshold.
+It starts `geniex serve -c npu` if nothing is listening, analyses the drive, builds the
+player AND the report, serves them on localhost and opens the player. Ctrl-C stops the
+server and returns the board to level 0. The vision pass is the slow part (~1 call per
+sample at ~3.4s warm); `--reuse` skips it when you are only changing the player, the
+report or a threshold.
+
+**The page is always served, never opened from `file://`.** A file:// page has no origin
+to post level changes to, so the hardware could never work from one; Chrome and Edge
+refuse to play a video from file:// often enough to need a footnote; and the report link
+and the evidence stills are relative paths that behave differently from disk. One path
+beats a split with three caveats. `--no-serve` restores the old behaviour.
+
+**If GenieX was already running, run.sh records no compute unit and the NPU badge does not
+appear.** It cannot know what an already-running server was started with, and a badge we
+cannot stand behind is worse than none. Stop it and re-run to record it.
+
+Tests — no model, no board, no video:
+
+```bash
+python -m pytest
+```
+
+Three files come out of a build, and the first is the important one:
+
+    output/review.json    every fact, every decision, every caveat
+    output/player.html    the video, synchronised with those decisions
+    output/report.html    the same decisions, printable (Ctrl-P -> PDF)
+
+A `--demo` build goes to `output/demo/<grade>/` so it never clobbers the real run.
 
 The individual scripts still work on their own — `laptop/test_video.py` for motion-only
 threshold calibration, `laptop/analyze_video.py` for a full pass, `tools/make_player.py` to
-rebuild the page, `tools/serve_player.py` if a browser refuses to play the video from `file://`,
-`tools/eval_scene_prompt.py` to score a prompt change against hand-labelled frames.
+rebuild the page, `tools/serve_player.py` to serve it by hand,
+`tools/eval_scene_prompt.py` to score a prompt change against hand-labelled frames,
+`tools/benchmark_compute.py` to time the vision call, `laptop/calm_board.py` to stop the
+board flashing.
 
 Useful flags on `make_player.py`: `--full-stop 3` (how long a stop must last to count as a good
 one) and `--window-after 10` (how long after the sign leaves the frame to keep looking for the
