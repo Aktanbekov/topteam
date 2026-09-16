@@ -95,6 +95,43 @@ def test_the_longest_stop_in_the_window_wins():
     assert verdict["grade"] == "pass"
 
 
+def test_a_car_already_stopped_when_the_sign_appears_is_not_accused():
+    """Queued at a four-way: you are stationary before the sign comes into view.
+
+    The rule used to require the stop to START inside the approach window, so a
+    car that was already stopped - and stayed stopped right through - was graded
+    as never having stopped at all. That is a fabricated critical error against
+    a driver who did everything right, which is the worst thing this product can
+    produce.
+
+    Found on a real chain check: the stop began 0.916s in and the sign was first
+    seen at 0.92s, four milliseconds later, and the approach came back "fail".
+    """
+    # Sign first seen at 3s; the car has been stationary since 1s and stays that
+    # way. The stop therefore STARTS before the approach opens, which is exactly
+    # the case the old rule threw away.
+    samples = fixtures.samples([{}, {"stop_sign": True}, {"stop_sign": True}] + [{}] * 8)
+    readings = fixtures.readings(30.0, ((1.0, 20.0),))
+    (verdict,) = judge(sign_approaches(samples), find_stops(readings, 0.4), 10.0, 3.0)
+    assert verdict["stopped"] is True, "a stationary car was accused of not stopping"
+    assert verdict["grade"] == "pass"
+
+
+def test_a_stop_that_ends_before_the_sign_is_seen_does_not_count():
+    """The other side of it: overlap is required, not merely being nearby.
+
+    A stop that was already over before the junction came into view belongs to
+    whatever happened earlier in the drive, not to this sign.
+    """
+    samples = fixtures.samples([{}, {}, {}, {"stop_sign": True}, {"stop_sign": True}]
+                               + [{}] * 6)
+    # Stopped 0-2s, long over by the time the sign appears at 9s.
+    readings = fixtures.readings(40.0, ((0.0, 2.0),))
+    (verdict,) = judge(sign_approaches(samples), find_stops(readings, 0.4), 10.0, 3.0)
+    assert verdict["grade"] == "fail"
+    assert verdict["stopped"] is False
+
+
 def test_a_stop_after_the_deadline_does_not_rescue_the_approach():
     samples = fixtures.samples([{"stop_sign": True}, {"stop_sign": True}] + [{}] * 10)
     # Sign last seen at 3.0s, so the window closes at 13.0s.

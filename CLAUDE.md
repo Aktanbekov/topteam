@@ -25,6 +25,7 @@ An offline AI coach for **practice drives** before the DMV road test.
 | 2 | Going through a red light | critical | feasible, harder | "possible red-light violation" |
 | 3 | Following too close | minor | experimental | "unsafe following-distance risk detected" |
 | 4 | No head check before a lane change | minor | hardest — build last | "no head check detected" |
+| 5 | Driving on while somebody is in the road | critical | **DONE** 2026-09-16 | "possible failure to yield to a person" |
 
 The forward dashcam cannot see head checks, mirror checks, turn signals, or hands.
 A second, driver-facing camera (laptop webcam) covers head checks.
@@ -305,6 +306,25 @@ The state machine must therefore:
 2. Keep it open for ~8-10 s after the sign disappears, since that is when the stop happens.
 3. Close it on a stop (pass) or when the window expires with no stop (possible violation).
 
+**A stop counts if it OVERLAPS the approach window, not if it starts inside it.**
+Fixed 2026-09-16, and it was a false-accusation bug of the worst kind. The rule was
+`first_seen <= stop_start <= deadline`, which throws away the commonest legitimate
+case at a four-way: you are queued behind another car, already stationary, and the
+sign only comes into view once you have stopped. The stop then begins *before* the
+approach opens, no stop is matched, and a driver who did everything right is told
+"possible incomplete stop" - a fabricated critical error.
+
+Found by `laptop/test_live_chain.py`, where a still image (a genuinely stationary
+car) graded `fail` because the stop began 0.916s in and the sign was first seen at
+0.92s - four milliseconds later. Sample timestamps are rounded to 2dp and motion
+readings are not, so rounding alone can flip it.
+
+A stop that was already **over** before the sign appeared still does not count; that
+one belongs to whatever happened earlier in the drive. Both directions are tested:
+`test_a_car_already_stopped_when_the_sign_appears_is_not_accused` and
+`test_a_stop_that_ends_before_the_sign_is_seen_does_not_count`. IMG_9831 still
+grades `fail`, so real violation detection is unchanged.
+
 **How long the stop lasted matters too, and it is a third outcome, not a pass.** California law
 asks for a complete stop and puts no number on it, but every instructor teaches "count to three",
 and a car that is stationary for an instant has not really looked. So `judge()` grades three ways:
@@ -387,6 +407,81 @@ With the strict prompt, the red-light reading on this clip is: real at 9-27s (th
 some samples but never invents one), and **zero claims anywhere on the stop-sign stretch**, which
 is what the whole section above was worried about.
 
+### 5. Possible failure to yield to a person — DONE (2026-09-16)
+The second scored check, and the same shape as the stop sign: a confirmed hazard, then
+the motion track asked whether the car did the right thing.
+
+```
+person confirmed in the road across 2+ samples
+                 +
+no stationary window overlapping that stretch
+                 =
+possible failure to yield
+```
+
+- **Presence alone is only a warning.** People wait at kerbs and cross behind you, and
+  none of that is a mistake. What makes it scoreable is the pair.
+- **Two grades, not three.** A stop-sign stop has a duration the law is silent about, so
+  `brief` is meaningful there. Yielding either happened or it did not, and we cannot see
+  when the person was clear, so anything finer would be invented.
+- **One sampling interval of slack afterwards, and no more.** Not a grace period - our
+  own resolution, stated honestly. We look every ~3s, so we do not know when the person
+  cleared, only that it was before the sample that missed them. Deliberately *not* the
+  stop sign's ten seconds: that window is long because a sign leaves the frame well
+  before the line, which is a different problem, and stopping fifteen seconds after
+  somebody crossed must not launder driving straight through.
+  **This was wrong in the first version and IMG_9840 caught it** - see below.
+- **Decided when the crossing ends**, never during it - the driver can still stop while
+  somebody is mid-road. `test_the_failure_is_not_decided_before_the_crossing_ends`.
+- **Same overlap rule as `judge_approach`**: already stopped when they step out still
+  counts as yielding.
+- **What it must never imply:** distance, which lane they were in, or who had right of
+  way. A forward camera with no depth gives presence and nothing else, and
+  `test_it_never_claims_to_know_distance_or_right_of_way` greps for exactly that.
+
+**IMG_9840 (a car park, 18.4s) taught two things, both measured 2026-09-16.**
+
+*One: "roadway" was too narrow.* A man walks straight across the lane in front of the
+car. The old wording - "a person standing or walking on the roadway" - reported **false
+in 3 frames out of 3**, because a car park aisle is not a roadway. Variants, at full
+resolution against hand labels in `tools/labels/IMG_9840.json`:
+
+| pedestrian wording | hits | missed | false alarms |
+|---|---|---|---|
+| "a person on the roadway" (old) | 0/3 | 3 | 0 |
+| ...plus "or a car park aisle" | 1/3 | 2 | 0 |
+| **"ANY person on foot ahead of us"** | **2/3** | 1 | 0 |
+
+Renaming the key to `person_on_our_path` scored **0/3** - identical to the old wording -
+so the key name was never the problem and the rename was dropped. The key is still
+`pedestrian_in_crosswalk` and the rule deliberately does not require a crosswalk.
+
+Cost on the labelled set: the broad wording fires **1 extra false alarm in 35** frames of
+IMG_9830 (at 42s), where the strict prompt had zero. It is a lone sample with no
+neighbour, so `scene_filter` rejects it and **no event is produced on IMG_9830 either
+way**. On IMG_9840 the two real hits ARE consecutive, so they confirm. That is the
+prompt-plus-confirmation doctrine working exactly as designed.
+
+*Two: the trailing interval is necessary.* On the rebuilt run the model confirmed him at
+3s and 6s and missed him at 9s, where he is at the frame edge behind parked cars. The
+driver braked and stopped at **8.43s** - and the video at 8.5s shows him still mid-stride
+in front of the car. With no trailing window the stop fell outside the run and a driver
+who yielded properly was told "possible failure to yield". With one sampling interval it
+reads **"Person in the road - stopped for them", level 1, nothing scored**, which is what
+the footage shows. Test:
+`test_a_stop_in_the_gap_after_the_last_sighting_still_counts_as_yielding`.
+
+`pedestrian_in_crosswalk` was one of the worst fields on the terse prompt - a person on
+5 frames with nobody in them. Every one of those was a lone sample, and this check needs
+two to agree in `scene_filter` and two more to form a run. Verified on both real clips:
+IMG_9830 makes one raw claim at 45.03s and it is rejected; IMG_9831 makes none. **Zero
+pedestrian events on either.**
+
+Adding it also exposed a hole in `level_spans`: the generic event path put level 3 at
+`detected_at`, which is the look-ahead bug arriving by a new route. Events with a level-3
+hardware entry now get the stop-sign treatment - heads-up until `decision_at`, critical
+only after.
+
 ### 3. Unsafe following-distance risk — experimental
 - Qwen's `car_ahead_close` is a subjective answer; never present it as a measured distance.
 - Hackathon label: "unsafe following-distance risk detected".
@@ -409,12 +504,46 @@ is what the whole section above was worried about.
 | level | meaning | signal |
 |---|---|---|
 | 0 | driving fine | green LED |
-| 1 | heads up (stop sign / red light / pedestrian ahead) | yellow LED + short buzz |
+| 1 | heads up (stop sign / red light / person in the road) | yellow LED + short buzz |
 | 2 | minor mistake | red LED + long buzz, counter +1 |
 | 3 | critical mistake | red flashing + 3 buzzes |
 LED matrix shows the minor-error count, e.g. "4/15".
 
 ## How to run it
+
+### The demo console - one page, no commands
+
+```bash
+./demo.sh
+```
+
+That is the whole presentation. It starts GenieX, brings the UNO Q up over USB if
+it is plugged in, and opens `http://127.0.0.1:8080` with everything on it:
+
+| section | what the buttons do |
+|---|---|
+| Recorded drives | every video in the project root - Analyse, then Open review |
+| Simulations | the bad-driving runs, against the real model and the real board |
+| Live | start the camera, watch it, rebuild the page afterwards |
+
+`tools/demo_console.py` is a **superset of serve_player**, not a new server, and that
+is the whole trick: the review pages post their level changes to their own origin, and
+serve_player's handler is what turns those into MCP calls. One process means one board
+connection and one port, so every page the console serves drives the strip without
+knowing anything about how.
+
+Jobs are **subprocesses, one at a time** - analysis takes a minute and a live drive runs
+until you stop it, so neither can happen on a request thread - and their output streams
+onto the page. A job that crashes cannot take the console down with it, which on a stage
+matters more than elegance. A job that owns the board (a live drive, a simulation) makes
+its own connection, and while it runs the console stops relaying: two writers on one
+strip is nonsense nobody can debug in front of an audience. The header says which one
+currently has it.
+
+The board is never a reason not to start. No UNO Q means the console still runs and says
+so; only the strip stays dark.
+
+### The individual commands
 
 One command, from **Git Bash** (installed with Git for Windows):
 
@@ -430,6 +559,10 @@ One command, from **Git Bash** (installed with Git for Windows):
 ./run.sh --window-after 12  # how long after the sign leaves the frame to keep looking
 ./run.sh --calm             # stop the board flashing and exit, nothing else
 ./run.sh --no-serve         # open the page from disk instead of serving it
+./run.sh --out output/9831  # write this run somewhere other than output/
+./run.sh --live             # read the LAPTOP CAMERA instead of a file
+./run.sh --live --unoq      # ...and signal the board as you drive
+./run.sh --live --max-seconds 60   # end the live drive on its own
 ```
 
 It starts `geniex serve -c npu` if nothing is listening, analyses the drive, builds the
@@ -503,27 +636,127 @@ shows the octagon, but the buzz for a mistake, the strike counter and the X neve
 real run — `laptop/test_signals.py` is the only way to see them. Get a clip with a genuine
 rolling stop or red-light crossing before anything else.
 
-## It is NOT live, and we never say it is
+## Two modes, and they claim different things
 
-Worth being blunt, because it is the easiest claim to overstate and the easiest to catch:
+Both exist. Which one produced a review is recorded in it (`drive.source`,
+`processing.mode`) and stated on the page, because this is the easiest claim in the
+project to overstate and the easiest for a judge to catch with a stopwatch.
 
-- **There is no camera capture path at all.** `VideoSource` takes a file path and raises
-  `FileNotFoundError` on anything else. Nothing reads a webcam or a device node.
-- **The analysis is slower than the footage.** 0.73x real time on the canonical run, because
-  38 calls at 3.47 s each is 132 s of inference for 114 s of video.
-- **Confirmation costs one sampling interval by design.** A claim is only acted on once a
-  neighbouring sample agrees, so a warning is ~3 s behind the event even in principle.
-- **What IS synchronised live: the replay.** As the video plays, the board reacts at the exact
-  timestamps from the level track, through the USB relay. That is genuine hardware reacting in
-  real time - to decisions computed earlier.
+### File mode (the default, unchanged)
+`./run.sh <clip>`. Post-drive review with synchronised evidence replay.
+- **Slower than the footage.** 0.73x real time on the canonical run - 38 calls at 3.47 s
+  is 132 s of inference for 114 s of video.
+- **What IS live is the replay.** As the video plays the board reacts at the exact
+  timestamps from the level track, over the USB relay. Genuine hardware in real time,
+  to decisions computed earlier.
 
-So the honest phrasing is "post-drive review with synchronised evidence replay", which is what
-the page, the report and the README all say. Calling it live detection would be the one claim
-on stage that a judge could disprove with a stopwatch.
+### Live mode (added 2026-09-16, `laptop/live_drive.py`)
+`./run.sh --live`. Reads the laptop camera and signals the board as you drive.
+It is genuinely live and **genuinely behind**:
 
-A real live mode would need: a capture source, a sampling interval above the call latency
-(5 s+, or a smaller model), and the state machine fed incrementally rather than over a finished
-timeline. It is on the deferred list in the implementation plan for good reason.
+```
+vision call                      ~3.5 s   measured, warm
++ one interval to confirm         3.0 s   scene_filter needs a neighbouring sample
+= a confirmed warning is         ~6.8 s   measured on a real live run
+```
+
+**That delay is not a defect to tune away.** Removing it means acting on one frame,
+which is exactly what produces hallucinated red lights (see the section above). So the
+scope is stated rather than hidden:
+
+| | live? |
+|---|---|
+| stop-sign approach | **yes** - the verdict is not due until ~10 s after the sign is seen, so 6.8 s fits inside the window |
+| red light | **no** - detected and shown, never called a warning that arrived in time |
+
+`drive_review.limitations()` branches on `processing.mode` and says all of this on the
+page. `tests/test_live.py` pins it, including that a file-mode run still says
+"post-drive analysis, not live detection" and a live one never does.
+
+**What live mode did NOT need, contrary to the old plan here:**
+- *An incremental state machine.* `build_review` is pure and idempotent and takes
+  **0.18 ms** over a whole 114 s drive, so live just calls it on the growing prefix
+  every time a sample lands. A live verdict and a post-drive verdict therefore cannot
+  drift apart - it is literally the same function over the same data.
+- *A different vision cadence.* The sampler never queues: if the model is busy when a
+  sample falls due, the slot is skipped and counted (`samples_missed`). Asking for 3 s
+  yields ~3.9 s in practice.
+
+**Four things that were not obvious and are worth keeping:**
+1. **PyAV opens the webcam.** `dshow` is compiled into its ffmpeg, so no OpenCV is
+   needed - `av.open("video=QC Front Camera", format="dshow")`. Device is
+   `QC Front Camera`, negotiates 1280x720, delivers ~27.5 fps through our loop.
+2. **Warm the model before the drive clock starts.** A cold call measured **18.3 s**,
+   and geniex unloads after its 300 s keepalive - so without a warm-up the drive opens
+   with an 18-second blind spot, which on a 20 s test was the entire drive (2 samples).
+   `_warm_up()` sends one flat-grey frame, throws the answer away, and calls
+   `SceneVision.reset_stats()` so it is not reported as the drive's cold start.
+   Warm-up measured 13.7 s; samples then land every ~3.9 s.
+3. **The confirmation window follows the MEASURED cadence, not the requested one.**
+   `scene_filter` only treats samples as neighbours within `spacing * 1.6`. Feed it the
+   requested 3.0 s (window 4.8 s) when samples actually arrive 3.9 s apart and one slow
+   call silently rejects every detection - the page would show a drive where nothing
+   happened. `achieved_spacing()` measures it and never goes below what was asked for.
+4. **The recording's clock IS the timeline's clock.** `pts` is the capture time in a
+   1/1000 timebase, set on the codec context *and* the stream - setting only the stream
+   leaves the encoder on its own default and the timestamps are read in the wrong units
+   (measured: 33 of 559 frames rejected by the muxer). Duplicate milliseconds are nudged
+   forward by 1 so the stream stays strictly increasing.
+
+**Watch it at `http://127.0.0.1:8008` while it runs.** `laptop/live_preview.py`
+serves an MJPEG stream of the frames plus the motion score, the last scene and the
+current level. It exists because a live drive otherwise draws nothing at all - the
+first live run looked broken for exactly this reason. It streams frames we have
+ALREADY decoded rather than using getUserMedia, because **the camera can only be
+opened once**: a second reader in the browser would fight the analysis for the
+device. (Confirmed the hard way - a second `./run.sh --live` opens the device fine
+and then dies on the first read with an I/O error. That is now `CameraLost`, with a
+message naming the likely cause.) The capture thread only assigns a reference; the
+JPEG encode happens on the server's thread, so a browser can never cost the drive
+a frame.
+
+**The model hallucinates indoors, and the guards hold.** Pointing the webcam at a
+room produced `STOP SIGN` on one sample. It changed nothing: `sign_approaches`
+needs `MIN_SIGN_SAMPLES = 2` before it opens a window, so one sighting gives
+0 approaches, 0 events and level 0. Two consecutive sightings give an approach and
+level 3. That is invariant 2 doing its job on live input, and it is worth
+demonstrating rather than hiding - a real sign persists across samples, a
+hallucination usually does not.
+
+**Live mode's motion track is authoritative.** It writes the per-frame `readings` into
+timeline.json, and `make_player.py` uses them instead of recomputing from the recording.
+Recomputing would give the page a slightly different track from the one the board was
+actually signalled from - two answers for one drive, which is the bug review.json exists
+to prevent.
+
+## Running with no internet - verified 2026-09-16
+
+The pitch is "no internet, the video never leaves the laptop", so it was worth
+checking rather than asserting. Every part, measured:
+
+| part | needs the network? | evidence |
+|---|---|---|
+| Served pages (console, player, report) | **no** | zero external URLs in anything we serve - no CDN, no web fonts, no `<script src>` |
+| GenieX server | **no** | its own startup line: *"Bound to loopback only"*. One socket, listening on 127.0.0.1:18181, and **zero** non-loopback connections through a full restart plus two inferences |
+| The model | **no** | 4.1GB already on disk at `~/.cache/geniex/models/qualcomm/Qwen3-VL-4B-Instruct`. Cold load after a kill -9: 14.2s, then 3.4s warm |
+| UNO Q | **no** | USB/ADB. `wlan0` is deliberately not used |
+| Console jobs | **no** | child processes of the console, all talking to 127.0.0.1 |
+
+**The one thing that could have bitten us, and the fix.** GenieX checks for
+updates on startup. It caches the result for a day - restarting it rewrote
+`last_notify` but left `last_check` untouched, so no call was made - but once
+that cache expires it *would* reach out, and with the Wi-Fi off that is a hang
+with no explanation in front of an audience.
+
+`--skip-update` is a global flag and `run.sh` now always passes it. With that,
+nothing in the pipeline has a reason to contact anything.
+
+Worth actually rehearsing once with the Wi-Fi switched off, because a claim like
+this is only as good as the last time somebody tried it:
+
+```bash
+./demo.sh          # with Wi-Fi off. Everything should behave identically.
+```
 
 ## Demo plan
 - Play a dashcam video as if live; LEDs/buzzer react; counter goes up; report appears at the end.
@@ -574,9 +807,11 @@ timeline. It is on the deferred list in the implementation plan for good reason.
   USB/ADB; `wlan0` is one more thing to fail on stage.
 - **External LEDs and vibration motor wiring:** none needed. Both Modulinos daisy-chain on
   the QWIIC connector - no resistors, no transistor, the Vibro has its own MOSFET.
-- **Where levels 2 and 3 come from:** level 3 from a failed stop-sign approach, at the
-  deadline. Level 2 from nothing - a brief stop is legal and must not be counted as an
-  error, and following distance is experimental. `laptop/test_signals.py` exercises it.
+- **Where levels 2 and 3 come from:** level 3 from a failed stop-sign approach at its
+  deadline, and (since 2026-09-16) from driving through a confirmed pedestrian crossing.
+  Level 2 from nothing - a brief stop is legal and must not be counted as an error, and
+  following distance is experimental. `laptop/test_signals.py` exercises the levels
+  directly; `laptop/test_live_chain.py` drives the whole chain into them.
 - **Sending images to GenieX:** the OpenAI-compatible `/v1/chat/completions` endpoint accepts
   `content: [{"type": "text", ...}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}]`.
   Verified working, and Qwen3-VL returned clean parseable JSON with no markdown fence.

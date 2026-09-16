@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Driving Test Coach - demo console</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d0e12; --panel: #16181f; --panel2: #1c1f28; --line: #272b36;
+    --ink: #e8eaf0; --dim: #8b93a7; --accent: #6ea8fe;
+    --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  /* The status bar is fixed to the bottom, so the page reserves room for it.
+     Without this the bar sits on top of the last section and the buttons under
+     it cannot be reached at all - which is exactly what it did to Live. */
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 22px 20px 108px; }
+
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+           border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--dim); font-size: 13px; }
+
+  .board { margin-left: auto; display: flex; align-items: center; gap: 10px;
+           background: var(--panel); border: 1px solid var(--line);
+           border-radius: 999px; padding: 6px 8px 6px 14px; font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim);
+         box-shadow: 0 0 0 3px rgba(255,255,255,.04); }
+  .dot.on { background: var(--ok); } .dot.busy { background: var(--warn); }
+  .dot.off { background: var(--bad); }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+       color: var(--dim); margin: 30px 0 12px; font-weight: 600; }
+  h2 .hint { text-transform: none; letter-spacing: 0; color: #666d80;
+             font-weight: 400; margin-left: 8px; }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-radius: 12px; padding: 14px 15px; display: flex;
+          flex-direction: column; gap: 9px; }
+  .card h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .card p { margin: 0; color: var(--dim); font-size: 13px; }
+  .meta { display: flex; gap: 7px; flex-wrap: wrap; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px;
+         background: var(--panel2); color: var(--dim); border: 1px solid var(--line); }
+  .tag.crit { color: var(--bad); border-color: #4a2626; background: #241417; }
+  .tag.warn { color: var(--warn); border-color: #4a3a17; background: #241f11; }
+  .tag.ok   { color: var(--ok);  border-color: #1f4030; background: #12241a; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 4px; }
+  button, .btn {
+    font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+    border-radius: 8px; padding: 7px 13px; border: 1px solid var(--line);
+    background: var(--panel2); color: var(--ink); text-decoration: none;
+    display: inline-block; transition: border-color .12s, background .12s;
+  }
+  button:hover:not(:disabled), .btn:hover { border-color: #3a4152; background: #242836; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: #1e3a6b; border-color: #2c5299; color: #dbe9ff; }
+  button.primary:hover:not(:disabled) { background: #24468040; border-color: #3d6ac4; }
+  button.danger { color: #ffc9c9; border-color: #4a2626; background: #241417; }
+
+  label.check { display: inline-flex; align-items: center; gap: 6px;
+                font-size: 13px; color: var(--dim); cursor: pointer; }
+
+  #job { position: fixed; left: 0; right: 0; bottom: 0; background: #0a0b0e;
+         border-top: 1px solid var(--line); display: none;
+         flex-direction: column; box-shadow: 0 -12px 30px rgba(0,0,0,.5); }
+  #job.show { display: flex; }
+  /* One line, always. Wrapping is what made this thing tall enough to bury the
+     Live section, so the bar may never wrap: the label truncates and the last
+     log line is the first thing dropped when space runs short. */
+  .jobbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+            font-size: 13px; height: 52px; flex-wrap: nowrap; overflow: hidden; }
+  #jlabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            max-width: 32vw; }
+  .jobbar button { white-space: nowrap; flex: none; }
+  @media (max-width: 900px) { .last { display: none; } }
+  @media (max-width: 620px) { #jtoggle { display: none; } }
+  /* The raw output is opt-in. It is useful when something goes wrong and pure
+     noise in front of an audience, so it starts closed and is capped well short
+     of the viewport even when open. */
+  #jlog { display: none; }
+  #job.open #jlog { display: block; max-height: 34vh; border-top: 1px solid var(--line); }
+  .last { color: var(--dim); overflow: hidden; text-overflow: ellipsis;
+          white-space: nowrap; max-width: 46vw; font-family: ui-monospace,
+          "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+  .done { color: var(--ok); } .failed { color: var(--bad); }
+  .spin { width: 12px; height: 12px; border-radius: 50%;
+          border: 2px solid #33405c;
+          border-top-color: var(--accent); animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  pre { margin: 0; padding: 12px 18px 18px; overflow: auto; flex: 1;
+        font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+        color: #c3cad9; white-space: pre-wrap; }
+  .note { color: var(--dim); font-size: 12.5px; margin: 10px 0 0;
+          border-left: 2px solid var(--line); padding-left: 10px; }
+  .err { color: var(--bad); font-size: 13px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>AI Driving Test Coach</h1>
+    <span class="sub">demo console</span>
+    <div class="board">
+      <span class="dot" id="bdot"></span>
+      <span id="btext">checking the board…</span>
+      <button id="calm" style="padding:4px 10px;font-size:12px">Calm</button>
+    </div>
+  </header>
+
+  <h2>Recorded drives <span class="hint">real footage, analysed on the NPU</span></h2>
+  <div class="grid" id="drives"></div>
+
+  <h2>Simulations <span class="hint">bad driving, real model, real board</span></h2>
+  <div class="grid" id="sims"></div>
+
+  <h2>Live <span class="hint">the laptop camera, analysed as it runs</span></h2>
+  <div class="grid" id="live"></div>
+
+  <p class="note">
+    Every finding is <strong>possible</strong>, inferred from a forward camera with no
+    speed feed. This is coaching for practice drives - not a DMV result, not an examiner,
+    and not for use during a real road test. Simulations are labelled as such on their
+    own pages; a live run is labelled live and states how far behind it is.
+  </p>
+</div>
+
+<div id="job">
+  <div class="jobbar">
+    <span class="spin" id="spin"></span>
+    <strong id="jlabel">—</strong>
+    <span class="sub" id="jtime"></span>
+    <span class="last" id="jlast"></span>
+    <span style="margin-left:auto"></span>
+    <button id="jtoggle">Details</button>
+    <button id="jstop" class="danger">Stop</button>
+    <button id="jhide">Hide</button>
+  </div>
+  <pre id="jlog"></pre>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let BOARD = { connected: false, busy: false };
+let JOBRUNNING = false;
+
+async function api(path, body) {
+  const opts = body
+    ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+    : { cache: "no-store" };
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+function sevTag(ev) {
+  const cls = ev.severity === "critical" ? "crit" : ev.severity === "info" ? "warn" : "";
+  const lvl = ev.level ? ` · level ${ev.level}` : "";
+  return `<span class="tag ${cls}">${ev.title}${lvl}</span>`;
+}
+
+function summaryTags(d) {
+  if (!d.built) return `<span class="tag">${d.empty || "not analysed yet"}</span>`;
+  let tags = [];
+  if (d.duration) tags.push(`<span class="tag">${d.duration.toFixed(1)}s</span>`);
+  if (d.critical > 0) tags.push(`<span class="tag crit">${d.critical} critical</span>`);
+  else tags.push(`<span class="tag ok">nothing scored</span>`);
+  (d.events || []).slice(0, 3).forEach(e => tags.push(sevTag(e)));
+  return tags.join("");
+}
+
+function card(d, actions) {
+  return `<div class="card">
+    <h3>${d.name}</h3>
+    <p>${d.note}</p>
+    <div class="meta">${summaryTags(d)}</div>
+    <div class="row">${actions}</div>
+  </div>`;
+}
+
+function openBtns(d) {
+  if (!d.built) return "";
+  return `<a class="btn" href="${d.player}" target="_blank">Open review</a>
+          <a class="btn" href="${d.report}" target="_blank">Report</a>`;
+}
+
+async function refresh() {
+  const cat = await api("/api/catalog");
+
+  $("drives").innerHTML = cat.drives.map(d => card(d,
+    `<button class="primary" data-act="analyse" data-id="${d.id}" ${JOBRUNNING ? "disabled" : ""}>
+       ${d.built ? "Re-analyse" : "Analyse"}</button>${openBtns(d)}`
+  )).join("") || `<p class="sub">No videos in the project root.</p>`;
+
+  $("sims").innerHTML = cat.sims.map(s => card(s,
+    `<button class="primary" data-act="sim" data-id="${s.id}" ${JOBRUNNING || !s.ready ? "disabled" : ""}>
+       Run on the board</button>${openBtns(s)}
+     ${s.ready ? "" : `<span class="err">needs the source clip analysed first</span>`}`
+  )).join("");
+
+  const L = cat.live;
+  $("live").innerHTML = card(
+    { name: "Live drive", note: "Reads the laptop camera, signals the board as you drive, and records so you get the same review page afterwards. A confirmed warning is ~7s behind the event - the page says so.", built: L.built, ...L },
+    `<button class="primary" data-act="live" ${JOBRUNNING ? "disabled" : ""}>Start (60s)</button>
+     <button data-act="live-open" ${JOBRUNNING ? "disabled" : ""}>Start (until stopped)</button>
+     <a class="btn" href="http://127.0.0.1:8008" target="_blank">Camera view</a>
+     ${L.built ? `<button data-act="build_live" ${JOBRUNNING ? "disabled" : ""}>Rebuild page</button>` : ""}
+     ${openBtns(L)}`
+  );
+}
+
+async function board() {
+  try {
+    BOARD = await api("/api/board");
+  } catch (e) { BOARD = { connected: false }; }
+  const dot = $("bdot"), text = $("btext");
+  dot.className = "dot " + (BOARD.busy ? "busy" : BOARD.connected ? "on" : "off");
+  text.textContent = BOARD.busy ? "UNO Q — driven by the running job"
+    : BOARD.connected ? "UNO Q connected" : "no UNO Q (everything else still works)";
+  $("calm").disabled = !BOARD.connected || BOARD.busy;
+}
+
+async function poll() {
+  const j = await api("/api/job");
+  JOBRUNNING = j.running;
+  const panel = $("job");
+  if (j.label) {
+    panel.classList.add("show");
+    $("jlabel").textContent = j.label;
+    $("jtime").textContent = j.running
+      ? `${j.seconds.toFixed(0)}s`
+      : j.stopped ? "stopped"
+      : (j.exit_code === 0 ? "finished" : `failed (exit ${j.exit_code})`);
+    $("spin").style.display = j.running ? "" : "none";
+    $("jstop").disabled = !j.running;
+
+    const time = $("jtime");
+    time.className = "sub" + (j.running || j.stopped ? "" : j.exit_code === 0 ? " done" : " failed");
+
+    // One line, not a terminal. The most recent thing worth reading, which is
+    // usually a level reaching the board or a sample landing.
+    // Skip the header the console writes (a timestamp line and the full argv):
+    // showing a presenter the command line is precisely what this page exists
+    // to stop doing.
+    const lines = (j.log || "").split(/\r?\n/).slice(2).map(s => s.trim()).filter(Boolean);
+    const interesting = lines.filter(l =>
+      /board:|levels actually|events found|samples|PASS|FAIL|error|Done\./i.test(l));
+    $("jlast").textContent = (interesting.length ? interesting : lines).slice(-1)[0] || "";
+
+    const log = $("jlog");
+    const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+    if (log.textContent !== j.log) {
+      log.textContent = j.log;
+      if (atBottom) log.scrollTop = log.scrollHeight;
+    }
+  }
+  return j;
+}
+
+let wasRunning = false;
+async function tick() {
+  const j = await poll();
+  await board();
+  if (wasRunning && !j.running) await refresh();   // a job just finished
+  else if (!wasRunning && j.running) await refresh();
+  wasRunning = j.running;
+}
+
+document.addEventListener("click", async (ev) => {
+  const el = ev.target.closest("[data-act]");
+  if (!el) return;
+  const act = el.dataset.act;
+  el.disabled = true;
+
+  let payload = null;
+  if (act === "analyse") payload = { action: "analyse", id: el.dataset.id };
+  else if (act === "sim") payload = { action: "sim", id: el.dataset.id, unoq: BOARD.connected };
+  else if (act === "live") payload = { action: "live", seconds: 60, unoq: BOARD.connected };
+  else if (act === "live-open") payload = { action: "live", unoq: BOARD.connected };
+  else if (act === "build_live") payload = { action: "build_live" };
+  if (!payload) return;
+
+  const res = await api("/api/launch", payload);
+  if (!res.ok) alert(res.error || "could not start");
+  await tick();
+});
+
+$("jstop").onclick = async () => { await api("/api/stop", {}); await tick(); };
+$("jtoggle").onclick = () => {
+  const panel = $("job");
+  panel.classList.toggle("open");
+  $("jtoggle").textContent = panel.classList.contains("open") ? "Hide details" : "Details";
+};
+$("jhide").onclick = () => $("job").classList.remove("show", "open");
+$("calm").onclick = async () => {
+  const r = await api("/api/calm", {});
+  if (!r.ok && r.error) alert(r.error);
+};
+
+refresh(); tick();
+setInterval(tick, 1200);
+</script>
+</html>

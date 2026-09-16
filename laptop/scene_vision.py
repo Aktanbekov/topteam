@@ -12,6 +12,7 @@ timing and motion reasoning belongs to the state machine.
 import base64
 import io
 import json
+import re
 import statistics
 import time
 
@@ -63,8 +64,17 @@ STRICT_PROMPT = (
     "stop_line_visible: a solid white bar painted across our own lane, where a\n"
     "  car must stop. Crosswalk stripes, lane markings, arrows and words painted\n"
     "  on the road are NOT stop lines.\n"
-    "pedestrian_in_crosswalk: a person standing or walking on the roadway. A\n"
-    "  person on the pavement or sidewalk is false.\n"
+    # The key is still named ..._in_crosswalk for compatibility, but the rule
+    # deliberately does NOT require one. Measured 2026-09-16 on IMG_9840, a car
+    # park: the old wording ("a person on the roadway") missed a man walking
+    # straight across the lane in front of the car, in 3 frames out of 3.
+    # Renaming the key to person_on_our_path changed nothing (still 0 of 3), so
+    # the key was never the problem - the word "roadway" was, and a car park
+    # aisle is not one. Asking for any person on foot gets 2 of 3.
+    "pedestrian_in_crosswalk: true if ANY person on foot is visible ahead of us\n"
+    "  standing or walking on the ground, outside a vehicle, whether or not\n"
+    "  there are road markings. Look carefully - people are small in the frame.\n"
+    "  Only a person inside a vehicle or behind a window is false.\n"
     "car_ahead_close: a vehicle in our own lane, directly ahead of us, near\n"
     "  enough that we would have to brake for it. Parked cars, cars on cross\n"
     "  streets, oncoming cars and cars far down the road are all false.\n"
@@ -87,14 +97,47 @@ EMPTY_SCENE = {
 }
 
 
+# A bare word where JSON wants a literal. The model occasionally writes Python's
+# `none` instead of `"none"` for traffic_light - once in 38 calls on IMG_9830, at
+# 84.0s, which failed the sample and put a warning banner on the review page.
+#
+# The pattern only matches a bare token in VALUE position: immediately after a
+# colon, and immediately before a comma or a closing brace. A quoted "none", the
+# word inside a sentence, and a longer word starting with "none" all fail to
+# match, so this cannot reach into content.
+BARE_NOTHING = re.compile(r"(?<=:)\s*(?:none|None|NULL|nil)\s*(?=[,}\]])")
+
+
 def extract_json(text):
-    """Pull a JSON object out of a reply that may be wrapped in prose or fences."""
+    """Pull a JSON object out of a reply that may be wrapped in prose or fences.
+
+    One repair is applied, and only one: a bare `none` in value position becomes
+    `null`. That is a quoting slip with exactly one possible reading, and
+    tidy() maps the result onto "none" anyway, so recovering it cannot smuggle a
+    value past any check - it only stops a whole sample being discarded.
+
+    Nothing else is repaired. A truncated or evasive reply is MISSING
+    information, and filling it in would be indistinguishable downstream from
+    something the model actually observed. A dropped sample costs a detection; an
+    invented one costs the driver a fabricated error, and that is the trade this
+    project is built around.
+    """
     start = text.find("{")
     end = text.rfind("}")
     if start < 0 or end <= start:
         return None
+
+    candidate = text[start : end + 1]
     try:
-        return json.loads(text[start : end + 1])
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    repaired = BARE_NOTHING.sub(" null", candidate)
+    if repaired == candidate:
+        return None
+    try:
+        return json.loads(repaired)
     except json.JSONDecodeError:
         return None
 
@@ -125,6 +168,19 @@ class SceneVision:
         # Wall-clock seconds per successful call. The review page reports the
         # median and p95 from these rather than quoting the number in the
         # brief - a measurement that comes from the run itself cannot go stale.
+        self.latencies = []
+
+    def reset_stats(self):
+        """Forget every measurement so far.
+
+        The live path warms the model with one throwaway frame before the drive
+        starts, so the weights load outside the drive rather than blinding its
+        first twenty seconds. That call is real inference and would otherwise be
+        reported as the drive's cold start - which would be the opposite of the
+        truth, since the whole point was to move it out of the drive.
+        """
+        self.calls = 0
+        self.failures = 0
         self.latencies = []
 
     def _data_url(self, rgb):

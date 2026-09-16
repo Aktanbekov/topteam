@@ -375,12 +375,22 @@ archive/             the superseded HTTP-over-Wi-Fi transport, and why
 - **No speed feed.** No CAN bus, no GPS. A very slow crawl cannot be told from a
   true standstill, so every stop finding is *possible*, and durations are worded
   as "about 1.1s at a standstill", never as a measured speed.
-- **Post-drive review, not live detection.** There is no camera capture path at
-  all — `VideoSource` takes a file. The analysis runs at **0.73× real time**
-  (113.7s of video took 156.7s), and confirmation costs one sampling interval
-  (~3s) by design, so a warning is behind the event even in principle. What *is*
-  live is the replay: the board reacts at the exact timestamps as the video
-  plays. Real hardware, in real time, to decisions computed earlier.
+- **One command for the whole demo.** `./demo.sh` opens a console at
+  `http://127.0.0.1:8080` with the recorded drives, the bad-driving simulations and
+  the live camera on one page, board attached. Nothing to type in front of an audience.
+- **Two modes, and they claim different things.** The default is post-drive
+  review of a file: the analysis runs at **0.73× real time** (113.7s of video
+  took 156.7s), and the board reacts at the exact timestamps as the video plays
+  — real hardware, in real time, to decisions computed earlier.
+  `./run.sh --live` reads the laptop camera instead and signals the board as you
+  drive. It is genuinely live and **genuinely behind**: a confirmed warning
+  arrives about **6.8s** after the event (measured), because one vision call
+  costs ~3.5s and a second sample has to agree before we act. That delay is not
+  a defect to tune out — dropping it means acting on a single frame, which is
+  what produces hallucinated red lights. A stop-sign approach tolerates it, as
+  the verdict is not due until ~10s after the sign is seen. A red light does
+  not, so live mode shows red lights and never calls them a timely warning.
+  Every review says which mode produced it, and `drive.source` is `live` or not.
 - **The motion threshold is narrow.** 0.25 sits between a stopped car at 0.24 and
   a moving one at 0.31 on our real footage. Recalibrate on new footage with
   `python laptop/test_video.py <clip>` before trusting it.

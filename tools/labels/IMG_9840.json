@@ -1,0 +1,23 @@
+{
+  "video": "IMG_9840.MOV",
+  "note": "Hand-labelled 2026-09-16 from output/9840/frames. A car park at Mitsuwa, 18.4s, sampled every 3s. PARTIAL: only pedestrian_in_crosswalk was assessed frame by frame, because this clip exists to test that field - the others are left out rather than guessed at. 'any' marks a genuinely borderline frame and is not scored either way. This is the clip that showed the old 'a person on the roadway' wording missing a man walking straight across the lane in front of the car: a car park aisle is not a 'roadway'.",
+  "fields": ["pedestrian_in_crosswalk"],
+  "frames": {
+    "0": {"pedestrian_in_crosswalk": "any"},
+    "3": {"pedestrian_in_crosswalk": true},
+    "6": {"pedestrian_in_crosswalk": true},
+    "9": {"pedestrian_in_crosswalk": true},
+    "12": {"pedestrian_in_crosswalk": false},
+    "15": {"pedestrian_in_crosswalk": false},
+    "18": {"pedestrian_in_crosswalk": false}
+  },
+  "frame_notes": {
+    "0": "a person in white far across the lot beside parked cars - too distant to call",
+    "3": "two people on the asphalt mid-lot, ahead and slightly left",
+    "6": "a man in black walking straight across the lane directly in front of the car",
+    "9": "the same man, now to the right, still on the driving surface between parked cars",
+    "12": "nobody on the driving surface",
+    "15": "nobody; hedge and parked cars only",
+    "18": "pulling out towards the street, nobody on foot ahead"
+  }
+}

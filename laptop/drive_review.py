@@ -36,6 +36,7 @@ from config import (
     MIN_SIGN_SAMPLES,
     MIN_STOP_S,
     SIGN_GAP_TOLERANCE_S,
+    VISION_INTERVAL_S,
     WINDOW_AFTER_S,
 )
 from scene_filter import confirm, dropped
@@ -61,6 +62,17 @@ STATUS_INFO = "info"
 NO_SPEED_FEED = (
     "Inferred from camera motion alone - there is no vehicle speed, GPS or CAN "
     "feed, so a very slow crawl cannot be told from a true standstill."
+)
+
+# What a live run has to admit before anyone asks. The delay is not a defect to
+# be tuned out: one model call is unavoidable, and the second sample is what
+# stops a single hallucinated frame becoming a critical error on the strip. A
+# build that removed it would be faster and would lie more.
+LIVE_LAG = (
+    "Live from the camera, but not instantaneous: a confirmed warning is about "
+    "{lag}s behind the event - one vision call, plus one {interval:g}s sampling "
+    "interval for a second frame to agree with the first. Acting on a single "
+    "frame would be faster and would fire on hallucinations."
 )
 
 
@@ -151,7 +163,19 @@ def judge_approach(
     its own grade instead of being waved through or counted as an error.
     """
     deadline = approach["last_seen"] + window_after
-    inside = [st for st in stops if approach["first_seen"] <= st[0] <= deadline]
+    # A stop counts if it OVERLAPS the approach window, not if it happens to
+    # begin inside it. The old rule asked for `first_seen <= start <= deadline`,
+    # which quietly threw away the commonest legitimate case at a four-way: you
+    # are queued behind another car, already stationary, and the sign only comes
+    # into view once you have stopped. The stop then starts before the approach
+    # opens and the driver was graded as never having stopped at all - a
+    # fabricated critical error against somebody who did it right.
+    #
+    # A stop that was already OVER before the sign appeared still does not count;
+    # that one belongs to whatever happened earlier in the drive.
+    inside = [
+        st for st in stops if st[1] >= approach["first_seen"] and st[0] <= deadline
+    ]
     # The longest stop in the window, not the first: an approach often dips
     # under the threshold for a moment before the real stop.
     matched = max(inside, key=lambda st: st[1] - st[0], default=None)
@@ -187,6 +211,64 @@ def judge_approach(
 
 def judge(approaches, stops, window_after=WINDOW_AFTER_S, full_stop_s=FULL_STOP_S):
     return [judge_approach(a, stops, window_after, full_stop_s) for a in approaches]
+
+
+# --------------------------------------------------------------- crosswalks
+def judge_crossing(run, stops, grace_s=VISION_INTERVAL_S):
+    """Did the car stop while a person was confirmed in the road?
+
+    The same question as a stop-sign approach over a different window, and the
+    same overlap rule: a stop counts if it overlaps the crossing, not if it
+    happens to begin inside it. A car already stopped when somebody steps out
+    has yielded, and must not be told otherwise.
+
+    Two outcomes rather than three. There is no "brief" grade here: a stop-sign
+    stop has a duration the law is silent about, but yielding either happened or
+    it did not, and we cannot see when the person was clear. Anything finer than
+    stopped/not-stopped would be invented.
+
+    The window extends one sampling interval past the last sighting, and no
+    further. That is not a grace period, it is our own resolution stated
+    honestly: we look every ~3s, so we do not know when the person actually
+    cleared, only that it was somewhere before the next sample missed them.
+
+    IMG_9840 is why. A man walked across the lane; the model confirmed him at 3s
+    and 6s and missed him at 9s, where he was at the edge of the frame behind
+    parked cars. The driver braked and stopped at 8.43s - and the video at 8.5s
+    shows him still mid-stride in front of the car. Without the interval, the
+    run ended at 6s, the stop fell outside it, and a driver who yielded properly
+    was told "possible failure to yield".
+
+    It is deliberately NOT the stop sign's ten seconds. That window is long
+    because a sign leaves the frame well before the car reaches the line, which
+    is a different problem. Stopping fifteen seconds after somebody has crossed
+    has nothing to do with them and must not launder driving straight through.
+    """
+    deadline = run["end"] + grace_s
+    overlapping = [st for st in stops if st[1] >= run["start"] and st[0] <= deadline]
+    yielded = max(overlapping, key=lambda st: st[1] - st[0], default=None)
+
+    verdict = dict(run)
+    if yielded is None:
+        verdict.update(
+            grade="rolled",
+            stopped=False,
+            stop_at=None,
+            stop_len=None,
+            # Not settled until the crossing is over: the driver can still stop
+            # while somebody is mid-road, and calling it earlier would announce
+            # the mistake before it had finished being made.
+            decision_at=round(deadline, 2),
+        )
+    else:
+        verdict.update(
+            grade="yielded",
+            stopped=True,
+            stop_at=round(yielded[0], 2),
+            stop_len=round(yielded[1] - yielded[0], 2),
+            decision_at=round(deadline, 2),
+        )
+    return verdict
 
 
 # ------------------------------------------------------------ confirmed runs
@@ -425,40 +507,6 @@ def warning_events(samples, stops, frames, spacing=3.0):
             )
         )
 
-    for run in confirmed_runs(
-        samples,
-        lambda s: s["confirmed"]["pedestrian_in_crosswalk"],
-        "pedestrian_in_crosswalk",
-        spacing=spacing,
-    ):
-        shot, offset = _nearest_frame(frames, run["known_at"])
-        events.append(
-            _event(
-                id=_eid("pedestrian", run["start"]),
-                kind="pedestrian_ahead",
-                severity=SEVERITY_INFO,
-                status=STATUS_WARNING,
-                title="Person in the roadway",
-                detail=(
-                    f"Confirmed from {run['start']:.0f}s to {run['end']:.0f}s."
-                ),
-                rule=(
-                    f"Reported in {len(run['samples'])} consecutive samples. "
-                    "Warning only - right of way is not assessed."
-                ),
-                tip="Yield and wait until they are fully clear of your path.",
-                evidence_start=run["start"],
-                evidence_end=run["end"],
-                detected_at=run["known_at"],
-                decision_at=run["known_at"],
-                screenshot=shot,
-                screenshot_offset_s=offset,
-                sources=list(run["samples"]),
-                limitations=["Presence only. Right of way is not assessed."],
-                hardware={"level": 1, "type": "pedestrian"},
-            )
-        )
-
     # Being stopped behind a car at a light is not tailgating, so the car has
     # to be moving before this is worth mentioning at all.
     for run in confirmed_runs(
@@ -505,6 +553,100 @@ def warning_events(samples, stops, frames, spacing=3.0):
     return events
 
 
+# What a forward camera cannot tell us about a person in the road, attached to
+# every one of these rather than left to the reader.
+PEDESTRIAN_LIMITS = [
+    "Presence only. There is no depth, so how far away they were is not known "
+    "and no distance is claimed.",
+    "Which lane they were in, and who had right of way, are not assessed.",
+    NO_SPEED_FEED,
+]
+
+
+def pedestrian_events(samples, stops, frames, spacing=3.0):
+    """A person confirmed in the road, and whether the car stopped for them.
+
+    THE SECOND SCORED CHECK. Presence alone is a warning - people wait at kerbs
+    and cross behind you, and none of that is a mistake. What makes it scoreable
+    is the pair: somebody confirmed in the road AND a car that never stopped
+    while they were there. The correct action would have shown up in the motion
+    track, and it did not.
+
+    Confirmation does the same work it does everywhere else. `scene_filter`
+    already requires two samples to agree on pedestrian_in_crosswalk, and
+    confirmed_runs requires two more to form a run, so one hallucinated frame
+    cannot produce a critical error. On the 38 labelled frames the old prompt
+    invented a person five times; every one of those was a lone sample.
+    """
+    events = []
+    runs = confirmed_runs(
+        samples,
+        lambda s: s["confirmed"]["pedestrian_in_crosswalk"],
+        "pedestrian_in_crosswalk",
+        spacing=spacing,
+    )
+
+    for run in runs:
+        verdict = judge_crossing(run, stops, grace_s=spacing)
+        shot, offset = _nearest_frame(frames, verdict["decision_at"])
+        rolled = verdict["grade"] == "rolled"
+
+        if rolled:
+            title = "Possible failure to yield to a person"
+            detail = (
+                f"Somebody was confirmed in the road from {run['start']:.0f}s to "
+                f"{run['end']:.0f}s, and the motion track shows no stop at any "
+                "point while they were there."
+            )
+            tip = "Stop and stay stopped until they are fully clear of your half of the road."
+        else:
+            title = "Person in the road - stopped for them"
+            # Say WHEN the stop was, not "during that time". The stop often
+            # lands in the sampling interval after the last sighting - that is
+            # the whole reason the window extends - so "during" would be wrong
+            # exactly when this sentence matters most.
+            detail = (
+                f"Somebody was confirmed in the road from {run['start']:.0f}s to "
+                f"{run['end']:.0f}s, and the car was stationary for "
+                f"{verdict['stop_len']:.1f}s from {verdict['stop_at']:.1f}s."
+            )
+            tip = "Wait until they are fully clear before moving off."
+
+        events.append(
+            _event(
+                id=_eid("pedestrian", run["start"]),
+                kind="pedestrian_crossing",
+                grade=verdict["grade"],
+                severity=SEVERITY_CRITICAL if rolled else SEVERITY_INFO,
+                status=STATUS_SCORED if rolled else STATUS_WARNING,
+                title=title,
+                detail=detail,
+                rule=(
+                    f"Confirmed in {len(run['samples'])} consecutive samples, then "
+                    "checked against the per-frame motion track for a stop "
+                    "overlapping that stretch. "
+                    + (
+                        "None was found, so this is reported as a possible "
+                        "failure to yield."
+                        if rolled
+                        else "One was found, so nothing is scored."
+                    )
+                ),
+                tip=tip,
+                evidence_start=run["start"],
+                evidence_end=run["end"],
+                detected_at=run["known_at"],
+                decision_at=verdict["decision_at"],
+                screenshot=shot,
+                screenshot_offset_s=offset,
+                sources=list(run["samples"]),
+                limitations=list(PEDESTRIAN_LIMITS),
+                hardware={"level": 3 if rolled else 1, "type": "pedestrian"},
+            )
+        )
+    return events
+
+
 def stationary_events(stops, verdicts, frames):
     """Stops not already explained by a stop sign - context, never a verdict."""
     explained = [(v["first_seen"], v["deadline"]) for v in verdicts]
@@ -541,6 +683,7 @@ def stationary_events(stops, verdicts, frames):
 def build_events(samples, stops, verdicts, frames, spacing=3.0):
     events = (
         stop_sign_events(verdicts, frames)
+        + pedestrian_events(samples, stops, frames, spacing)
         + warning_events(samples, stops, frames, spacing)
         + stationary_events(stops, verdicts, frames)
     )
@@ -588,8 +731,25 @@ def level_spans(events, verdicts, critical_hold_s=CRITICAL_HOLD_S, spacing=3.0):
         # span was zero-length - a genuine confirmed red light that reached the
         # driver as no warning at all.
         start = e["detected_at"]
+        level = e["hardware"]["level"]
+
+        if level >= 3:
+            # A critical from an event, not a stop-sign verdict. It gets exactly
+            # the same treatment: a heads-up while the thing is happening, and
+            # the critical only from decision_at. Falling through to the warning
+            # span below would light the strip red from detected_at - which is
+            # the look-ahead bug this module was written to kill, just arriving
+            # by a different route.
+            decided = e["decision_at"]
+            if decided > start:
+                spans.append((start, decided, 1, e["hardware"]["type"]))
+            spans.append(
+                (decided, decided + critical_hold_s, 3, "critical")
+            )
+            continue
+
         end = max(e["evidence_end"], start) + spacing
-        spans.append((start, end, e["hardware"]["level"], e["hardware"]["type"]))
+        spans.append((start, end, level, e["hardware"]["type"]))
 
     return [s for s in spans if s[1] > s[0]]
 
@@ -703,6 +863,17 @@ def coverage():
             ),
         },
         {
+            "key": "pedestrian_crossing",
+            "label": "Person in the road",
+            "status": "active",
+            "scored": True,
+            "note": (
+                "Confirmed across samples, then checked against the motion "
+                "track for a stop. Presence alone is a warning; driving through "
+                "it is scored. No distance, lane or right-of-way judgement."
+            ),
+        },
+        {
             "key": "following_distance",
             "label": "Following distance",
             "status": "experimental",
@@ -726,8 +897,34 @@ def coverage():
 
 
 def limitations(processing=None, settings=None):
-    ratio = (processing or {}).get("real_time_ratio")
+    processing = processing or {}
+    ratio = processing.get("real_time_ratio")
     interval = (settings or {}).get("vision_interval_s") or 3.0
+
+    if processing.get("mode") == "live":
+        # A live run must never inherit the post-drive wording below, and it
+        # must state its own lag rather than leaving a judge with a stopwatch to
+        # find it. The measured figure is preferred; the arithmetic is the
+        # fallback when a drive ended before any call came back warm.
+        lag = processing.get("warning_lag_s")
+        if not lag:
+            lag = round((processing.get("median_s") or 3.5) + interval, 1)
+        return [
+            NO_SPEED_FEED,
+            LIVE_LAG.format(lag=lag, interval=interval),
+            # The lag is survivable for one of the two critical checks and not
+            # for the other, and which is which is not obvious from the outside.
+            "A stop-sign approach tolerates that delay: the verdict is not due "
+            "until about ten seconds after the sign is first seen, so the "
+            "confirmation lands well inside the window. A red light does not - "
+            "it is detected and shown, and is never presented as a warning that "
+            "could have arrived in time to matter.",
+            "The vision model samples roughly every 3 seconds, so anything "
+            "shorter than that can fall between samples.",
+            "Every finding is reported as possible. This is coaching feedback, "
+            "not an official DMV assessment.",
+        ]
+
     pace = ""
     if ratio:
         # Worth saying out loud rather than leaving a judge to work it out from

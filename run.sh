@@ -12,6 +12,21 @@
 #   ./run.sh --demo pass --unoq  the clean run, with the board attached
 #   ./run.sh --calm              stop the board flashing and exit
 #   ./run.sh --no-serve          open the page from disk instead of serving it
+#   ./run.sh --out output/9831   write this run somewhere other than output/
+#
+#   ./run.sh --console           THE DEMO CONSOLE - everything from one page
+#   ./run.sh --live              analyse the LAPTOP CAMERA as it happens
+#   ./run.sh --live --unoq       ...and signal the board while you drive
+#   ./run.sh --live --max-seconds 60    end the drive on its own after a minute
+#
+# While a live drive runs, WATCH THE CAMERA at http://127.0.0.1:8008 - the page
+# shows the frames, the motion score and the current level. Without it a live
+# drive draws nothing anywhere and a working run looks identical to a broken one.
+#
+# Live mode records what it sees to output/live/drive.mp4, so the same player
+# and report come out at the end. It is genuinely live, and genuinely behind:
+# a confirmed warning arrives about 6.8s after the event, because a vision call
+# takes ~3.5s and a second sample has to agree before we act. The page says so.
 #
 # Demo grades: pass (full stop), brief (short but legal), fail (no stop at all).
 # They use synthetic clips, analysed for real by the local model, because we
@@ -39,6 +54,10 @@ DEMO=""
 VIDEO=""
 FULL_STOP=""
 WINDOW_AFTER=""
+OUT_OVERRIDE=""
+LIVE=0
+CONSOLE=0
+MAX_SECONDS=""
 MCP_PORT=3001
 PLAYER_PORT=8000
 BOARD_DIR=/home/arduino/topteam
@@ -55,12 +74,16 @@ while [ $# -gt 0 ]; do
     --unoq) UNOQ=1; shift ;;
     --calm) CALM=1; shift ;;
     --no-serve) NO_SERVE=1; shift ;;
+    --out) OUT_OVERRIDE="$2"; shift 2 ;;
+    --live) LIVE=1; shift ;;
+    --console) CONSOLE=1; shift ;;
+    --max-seconds) MAX_SECONDS="$2"; shift 2 ;;
     --every) VISION_EVERY="$2"; shift 2 ;;
     --compute) COMPUTE="$2"; shift 2 ;;
     --demo) DEMO="$2"; shift 2 ;;
     --full-stop) FULL_STOP="$2"; shift 2 ;;
     --window-after) WINDOW_AFTER="$2"; shift 2 ;;
-    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 1 ;;
     *) VIDEO="$1"; shift ;;
   esac
@@ -147,8 +170,29 @@ if [ -n "$DEMO" ]; then
   SOURCE_LABEL=synthetic
 fi
 
+# An explicit output directory lets two runs sit side by side - the canonical
+# drive in output/ and a new clip in output/9831 - instead of the second one
+# quietly overwriting the first. output/ is gitignored, so an overwrite there
+# cannot be recovered; only the source video can.
+if [ -n "$OUT_OVERRIDE" ]; then
+  [ -z "$DEMO" ] || die "pass either --demo or --out, not both"
+  OUT_DIR="$OUT_OVERRIDE"
+fi
+
+# --------------------------------------------------------------------- live
+# Live mode has no input file to find: the camera IS the input. It writes the
+# drive to OUT_DIR/drive.mp4 as it goes, and everything after the drive - the
+# player, the report, the serving - is the ordinary path over that recording.
+if [ "$LIVE" = "1" ]; then
+  [ -z "$DEMO" ] || die "pass either --demo or --live, not both"
+  [ -z "$VIDEO" ] || die "--live reads the camera; do not also pass a video file"
+  [ "$REUSE" = "0" ] || die "--reuse rebuilds a finished drive; --live records a new one"
+  [ -n "$OUT_OVERRIDE" ] || OUT_DIR=output/live
+  VIDEO="$OUT_DIR/drive.mp4"
+fi
+
 # -------------------------------------------------------------------- video
-if [ -z "$VIDEO" ]; then
+if [ "$LIVE" = "0" ] && [ "$CONSOLE" = "0" ] && [ -z "$VIDEO" ]; then
   # Pick the only video in the project root, or complain if it is ambiguous.
   mapfile -t found < <(find . -maxdepth 1 -type f \
     \( -iname '*.mov' -o -iname '*.mp4' -o -iname '*.avi' -o -iname '*.mkv' \) | sort)
@@ -161,7 +205,7 @@ if [ -z "$VIDEO" ]; then
        die "pass the one you want: ./run.sh <file>" ;;
   esac
 fi
-[ -f "$VIDEO" ] || die "no such file: $VIDEO"
+[ "$LIVE" = "1" ] || [ "$CONSOLE" = "1" ] || [ -f "$VIDEO" ] || die "no such file: $VIDEO"
 
 mkdir -p "$OUT_DIR"
 TIMELINE="$OUT_DIR/timeline.json"
@@ -171,12 +215,14 @@ PLAYER="$OUT_DIR/player.html"
 # use it, the board is still showing that session's last verdict. Nothing else
 # will ever clear it, and the page has no relay to talk to - which looks exactly
 # like "the hardware is broken and the player does nothing".
-if [ "$UNOQ" = "0" ] && mcp_port_open; then
+if [ "$UNOQ" = "0" ] && [ "$CONSOLE" = "0" ] && mcp_port_open; then
   "$PY" laptop/calm_board.py --quiet || true
   echo "    (found an idle UNO Q tunnel and returned the board to level 0)"
 fi
 
-say "Drive: $VIDEO"
+if [ "$CONSOLE" = "1" ]; then say "Demo console"
+elif [ "$LIVE" = "1" ]; then say "Live drive from the camera"
+else say "Drive: $VIDEO"; fi
 [ -n "$DEMO" ] && echo "    demo grade: $DEMO (synthetic footage, labelled as such)"
 
 # ------------------------------------------------------------------- geniex
@@ -201,7 +247,13 @@ start_geniex() {
 
   say "Starting GenieX on the $COMPUTE (first model load takes ~15s)"
   mkdir -p output
-  "$geniex" serve -c "$COMPUTE" >output/geniex.log 2>&1 &
+  # --skip-update because this has to work with the Wi-Fi off. GenieX caches its
+  # update check for a day, so most starts touch nothing - but the moment that
+  # cache expires it would try to reach the internet, and on a stage with no
+  # network that is a hang nobody can explain. The model is already on disk
+  # (~/.cache/geniex, 4.1GB) and the server binds loopback only, so with this
+  # flag the whole pipeline has no reason to contact anything, ever.
+  "$geniex" serve -c "$COMPUTE" --skip-update >output/geniex.log 2>&1 &
   local pid=$!
 
   for _ in $(seq 1 40); do
@@ -241,40 +293,16 @@ else
   fi
 fi
 
-# ------------------------------------------------------------------ analyse
-COMPUTE_ARG=()
-[ "$STARTED_GENIEX" = "1" ] && COMPUTE_ARG=(--compute "$COMPUTE")
-
-if [ "$REUSE" = "1" ] && [ -f "$TIMELINE" ]; then
-  say "Reusing $TIMELINE (skipping the vision pass)"
-elif [ "$REUSE" = "1" ]; then
-  die "--reuse given but $TIMELINE does not exist yet"
-elif [ "$HAVE_GENIEX" = "1" ]; then
-  say "Analysing (vision call every ${VISION_EVERY}s - this is the slow part)"
-  "$PY" laptop/analyze_video.py "$VIDEO" \
-    --vision-every "$VISION_EVERY" \
-    --source "$SOURCE_LABEL" \
-    "${COMPUTE_ARG[@]}" \
-    --save-frames "$OUT_DIR/frames" \
-    --json-out "$TIMELINE"
-else
-  say "Replaying recorded scene labels (no model call)"
-  cp "$FROZEN" "$TIMELINE"
-fi
-
-# ------------------------------------------------------------------- player
-say "Building the player and the report"
-BUILD_ARGS=(--video "$VIDEO" --timeline "$TIMELINE" --out "$PLAYER")
-[ -n "$FULL_STOP" ] && BUILD_ARGS+=(--full-stop "$FULL_STOP")
-[ -n "$WINDOW_AFTER" ] && BUILD_ARGS+=(--window-after "$WINDOW_AFTER")
-[ "$STARTED_GENIEX" = "1" ] && BUILD_ARGS+=(--compute "$COMPUTE")
-
-"$PY" tools/make_player.py "${BUILD_ARGS[@]}"
-
 # -------------------------------------------------------------------- uno q
 # Everything reaches the board over USB. Wi-Fi is deliberately not used: wlan0
 # was down out of the box, and a hotspot is one more thing to fail on stage.
-if [ "$UNOQ" = "1" ]; then
+# A function rather than a straight-line block, because the two modes need the
+# board at different moments: a recorded drive can set it up after the analysis,
+# but a LIVE drive is signalling it while it runs, so the tunnel has to be open
+# before the camera does.
+UNOQ_READY=0
+setup_unoq() {
+  [ "$UNOQ_READY" = "1" ] && return 0
   say "UNO Q over USB"
 
   # adb ships with App Lab rather than on PATH.
@@ -324,6 +352,103 @@ if [ "$UNOQ" = "1" ]; then
   "$ADB" forward tcp:$MCP_PORT tcp:$MCP_PORT >/dev/null \
     || die "could not forward tcp:$MCP_PORT"
   echo "    tunnel up on 127.0.0.1:$MCP_PORT"
+  UNOQ_READY=1
+}
+
+
+# ----------------------------------------------------------------- console
+# Everything above has already happened: a working Python, GenieX serving, and
+# the board's tunnel available. The console then runs the analysis, the
+# simulations and the live drive as child processes of its own, so the whole
+# demo is buttons on a page rather than commands in a terminal.
+if [ "$CONSOLE" = "1" ]; then
+  # Try the board, but never refuse to start over it. A console that will not
+  # come up because a USB cable is loose is the worst possible stage failure.
+  # Plain shell on purpose: the same adb lookup setup_unoq does, and no inline
+  # script to get its escaping mangled on the way through the heredoc.
+  CONSOLE_ARGS=()
+  CONSOLE_ADB=""
+  if command -v adb >/dev/null 2>&1; then
+    CONSOLE_ADB="adb"
+  else
+    for a in "$LOCALAPPDATA"/Arduino15/packages/arduino/tools/adb/*/adb.exe              "$HOME"/AppData/Local/Arduino15/packages/arduino/tools/adb/*/adb.exe; do
+      [ -x "$a" ] && CONSOLE_ADB="$a" && break
+    done
+  fi
+
+  if [ -n "$CONSOLE_ADB" ] &&      MSYS_NO_PATHCONV=1 "$CONSOLE_ADB" devices 2>/dev/null | grep -qw device; then
+    setup_unoq
+    CONSOLE_ARGS=(--unoq)
+  else
+    warn ""
+    warn "No UNO Q over USB. The console still runs - every page, every"
+    warn "simulation and the live drive all work; only the strip stays dark."
+    warn ""
+  fi
+
+  say "Opening the demo console"
+  echo "    everything runs from that page - no more commands"
+  echo "    Ctrl-C here stops it and returns the board to level 0"
+  echo
+  exec "$PY" -u tools/demo_console.py --open "${CONSOLE_ARGS[@]}"
+fi
+
+# ------------------------------------------------------------------ analyse
+COMPUTE_ARG=()
+[ "$STARTED_GENIEX" = "1" ] && COMPUTE_ARG=(--compute "$COMPUTE")
+
+if [ "$LIVE" = "1" ]; then
+  # The board has to be listening before the drive starts, not after it ends.
+  [ "$UNOQ" = "1" ] && setup_unoq
+
+  LIVE_ARGS=(--out "$OUT_DIR" --vision-every "$VISION_EVERY" "${COMPUTE_ARG[@]}")
+  [ -n "$MAX_SECONDS" ] && LIVE_ARGS+=(--max-seconds "$MAX_SECONDS")
+  [ "$UNOQ" = "1" ] && LIVE_ARGS+=(--unoq)
+
+  if [ "$UNOQ" = "0" ]; then
+    # Easy to miss otherwise: the drive detects everything correctly, the page
+    # shows level 3, and the strip sits there dark because nothing was ever
+    # told to send it. That looks like broken hardware and is not.
+    warn ""
+    warn "The UNO Q will NOT react to this drive - you did not pass --unoq."
+    warn "Everything else works; only the board is left out. For the hardware:"
+    warn "    ./run.sh --live --unoq"
+    warn ""
+  fi
+
+  say "Live drive - Ctrl-C to end it"
+  "$PY" -u laptop/live_drive.py "${LIVE_ARGS[@]}"
+
+  [ -f "$TIMELINE" ] || die "the live drive produced no timeline"
+  [ -f "$VIDEO" ] || die "the live drive produced no recording at $VIDEO"
+elif [ "$REUSE" = "1" ] && [ -f "$TIMELINE" ]; then
+  say "Reusing $TIMELINE (skipping the vision pass)"
+elif [ "$REUSE" = "1" ]; then
+  die "--reuse given but $TIMELINE does not exist yet"
+elif [ "$HAVE_GENIEX" = "1" ]; then
+  say "Analysing (vision call every ${VISION_EVERY}s - this is the slow part)"
+  "$PY" laptop/analyze_video.py "$VIDEO" \
+    --vision-every "$VISION_EVERY" \
+    --source "$SOURCE_LABEL" \
+    "${COMPUTE_ARG[@]}" \
+    --save-frames "$OUT_DIR/frames" \
+    --json-out "$TIMELINE"
+else
+  say "Replaying recorded scene labels (no model call)"
+  cp "$FROZEN" "$TIMELINE"
+fi
+
+# ------------------------------------------------------------------- player
+say "Building the player and the report"
+BUILD_ARGS=(--video "$VIDEO" --timeline "$TIMELINE" --out "$PLAYER")
+[ -n "$FULL_STOP" ] && BUILD_ARGS+=(--full-stop "$FULL_STOP")
+[ -n "$WINDOW_AFTER" ] && BUILD_ARGS+=(--window-after "$WINDOW_AFTER")
+[ "$STARTED_GENIEX" = "1" ] && BUILD_ARGS+=(--compute "$COMPUTE")
+
+"$PY" tools/make_player.py "${BUILD_ARGS[@]}"
+
+if [ "$UNOQ" = "1" ] && [ "$LIVE" = "0" ]; then
+  setup_unoq
 fi
 
 # --------------------------------------------------------------------- open

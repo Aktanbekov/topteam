@@ -132,8 +132,23 @@ def main():
     out_dir = args.out.parent
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print("recomputing dense motion track...")
-    readings, meta = dense_motion(args.video, args.threshold, args.rotate)
+    # A live run already measured the motion track, frame by frame, as it drove
+    # the board. Recomputing it from the recording would produce a second,
+    # slightly different answer for the same drive - so when the timeline
+    # carries its own readings, they win.
+    if timeline.get("readings"):
+        print("using the motion track measured live...")
+        readings = [(t, score, stopped) for t, score, stopped in timeline["readings"]]
+        recorded = timeline.get("drive") or {}
+        meta = {
+            "duration_s": recorded.get("duration_s", 0.0),
+            "fps": recorded.get("fps") or 30.0,
+            "width": recorded.get("width", 0),
+            "height": recorded.get("height", 0),
+        }
+    else:
+        print("recomputing dense motion track...")
+        readings, meta = dense_motion(args.video, args.threshold, args.rotate)
 
     spacing = timeline.get("settings", {}).get("vision_interval_s") or VISION_INTERVAL_S
     settings = Settings(
