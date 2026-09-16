@@ -26,21 +26,24 @@
 // ---------------------------------------------------------------- hardware
 // Arduino_LED_Matrix is built into the Arduino Zephyr Core that the UNO Q uses.
 // Do NOT install it from the library manager - it is not there, and it does not
-// need to be. Note the class is Arduino_LED_Matrix here; the UNO R4 spells the
-// same thing ArduinoLEDMatrix, so R4 examples will not compile as written.
+// need to be. The header also typedefs ArduinoLEDMatrix to the same class, so
+// either spelling compiles.
 Arduino_LED_Matrix matrix;
 ModulinoPixels strip;
 ModulinoVibro vibro;
 
-const int COLS = Arduino_LED_Matrix::canvasWidth;   // 13
-const int ROWS = Arduino_LED_Matrix::canvasHeight;  // 8
+// Written out rather than read from the class: canvasWidth/canvasHeight are
+// private members, and only exist at all when ArduinoGraphics is present.
+const int COLS = 13;
+const int ROWS = 8;
 
 uint8_t frame[ROWS * COLS];
 
-// Full brightness rather than 1. The matrix supports grayscale
-// (setGrayscaleBits), so a value of 1 could come out nearly invisible; 0xFF is
-// "on" whether the buffer is treated as binary or as brightness.
+// draw() feeds matrixGrayscaleWrite(), so the buffer is brightness, not on/off.
+// setGrayscaleBits(8) in setup() makes 255 the top value, so this is full
+// brightness. Writing 1 here would be very nearly invisible.
 const uint8_t PIXEL_ON = 0xFF;
+const uint8_t GRAYSCALE_BITS = 8;
 
 // ------------------------------------------------------------------ state
 // Set from the Linux side, read by loop(). The count lives here rather than on
@@ -205,6 +208,7 @@ void serviceBuzz() {
 // -------------------------------------------------------------------- main
 void setup() {
   matrix.begin();
+  matrix.setGrayscaleBits(GRAYSCALE_BITS);
 
   Modulino.begin();
   strip.begin();

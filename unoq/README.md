@@ -36,9 +36,15 @@ before blaming the code.
 
 **Don't look for `Arduino_LED_Matrix` in the library manager — it isn't there.**
 It ships inside the Arduino Zephyr Core that the UNO Q runs on, so `#include
-"Arduino_LED_Matrix.h"` just works. Note the class is spelled
-`Arduino_LED_Matrix` on the UNO Q, where the UNO R4 calls it `ArduinoLEDMatrix`;
-R4 matrix examples off the web will not compile here as written.
+"Arduino_LED_Matrix.h"` just works. Either spelling of the class compiles; the
+header typedefs `ArduinoLEDMatrix` to `Arduino_LED_Matrix`.
+
+What does *not* carry over from UNO R4 examples is `canvasWidth` /
+`canvasHeight` — on this version they are private, and only exist when
+ArduinoGraphics is present. Write 13 and 8.
+
+The header is worth reading if the matrix misbehaves:
+`C:\Users\<you>\AppData\Local\Arduino15\packages\arduino\hardware\zephyr\1.0.0\libraries\Arduino_LED_Matrix\src\`
 
 The sketch registers two functions, `alert(int level)` and `reset()`:
 
@@ -123,13 +129,15 @@ set to the same address; the Modulino library ships an `AddressChanger` example.
 
 **The matrix stays dark** — the sketch uses `matrix.draw(frame)` with a
 `uint8_t frame[104]` laid out as `frame[row * 13 + col]`, writing `0xFF` for a
-lit pixel. If nothing appears, `setPixel()` and that one `draw()` call are the
-only two places to change. `loadPixels(arr, size)` is the alternative the same
-library offers.
+lit pixel. `draw()` goes straight to `matrixGrayscaleWrite()`, so the buffer is
+brightness, not on/off — hence `setGrayscaleBits(8)` in `setup()` and `0xFF`
+rather than `1`, which would be almost invisible.
 
-Pixels written as `0xFF` rather than `1` on purpose: the matrix supports
-grayscale via `setGrayscaleBits()`, so a value of `1` can come out almost
-invisible. `0xFF` reads as "on" whether the buffer is binary or brightness.
+Deliberately **not** using the library's `loadPixels()` / `renderBitmap()`
+convenience path. It calls `loadPixelsToBuffer()` with a `uint32_t _frameHolder[3]`
+(96 bits) and then hands it to `loadFrame()`, which reads four words — fine for
+the UNO R4's 12x8 = 96 pixels, one word short for this board's 8x13 = 104.
+`draw()` avoids that code entirely.
 
 **Laptop can't reach the board** — both devices must be on the same network.
 Check with `ping <unoq-ip>` from the laptop. The listener binds `0.0.0.0`, so it
