@@ -1,33 +1,48 @@
-"""Walk the UNO Q through every alert level, so you can watch the LED react.
+"""Walk the UNO Q through every alert level, so you can watch all three outputs.
 
-This is the end-to-end signal check: laptop -> network -> UNO Q Linux ->
-Bridge -> sketch -> LED. No video, no model, nothing else involved.
+This is the end-to-end hardware check with no video and no model involved:
 
-    python test_signals.py
-    python test_signals.py --host 192.168.1.42 --hold 3
+    laptop -> MCP -> USB/ADB -> UNO Q Linux -> Router Bridge -> sketch -> LEDs
+
+Use it when the review player shows nothing on the board and you need to know
+which half is at fault. It is also the only way to see levels 2 and 3 on the
+current footage: IMG_9830 never produces a mistake, so a real run stays on
+green and amber and the motor never fires.
+
+    python laptop/test_signals.py
+    python laptop/test_signals.py --hold 4
+
+Needs the tunnel and the board's MCP server, which ./run.sh --unoq sets up:
+
+    adb forward tcp:3001 tcp:3001
+    adb shell 'cd /home/arduino/topteam && python3 mcp_server.py'
 """
 
 import argparse
 import sys
 import time
 
-import requests
+from unoq_mcp import UnoQ
 
-from alert_client import LEVEL_MEANING, AlertClient
+LEVEL_MEANING = {
+    0: "driving fine",
+    1: "heads up",
+    2: "minor mistake",
+    3: "critical mistake",
+}
 
-# What each level should look like on the three outputs, so you can check the
-# board rather than trust it.
+# What each level should look like, so you check the board rather than trust it.
 EXPECTED = {
-    0: "green LED on the strip, calm bar on the matrix, no buzz",
-    1: "amber LED on the strip, still no buzz",
-    2: "one buzz, strip gains a red LED, matrix shows the count",
-    3: "three buzzes, whole strip flashes red, matrix shows a big X",
+    0: "green on the strip, calm bar on the matrix, no buzz",
+    1: "amber on the strip, still no buzz",
+    2: "ONE buzz, strip gains a red LED, matrix shows the count",
+    3: "THREE ramping buzzes, whole strip flashes red, matrix shows a big X",
 }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default=None, help="UNO Q IP address")
+    parser.add_argument("--url", default=None, help="MCP server URL")
     parser.add_argument(
         "--hold",
         type=float,
@@ -36,42 +51,39 @@ def main():
     )
     args = parser.parse_args()
 
+    unoq = UnoQ(url=args.url)
+    if not unoq.connect():
+        sys.exit(f"{unoq.last_error}")
+
+    print(f"UNO Q: {unoq.url}")
+
+    # mcu_ping is the only call that waits for the sketch to answer, so it is
+    # the one thing that separates "the router took our bytes" from "the sketch
+    # is actually running". Not fatal - an older sketch has no mcu_ping but
+    # still handles alerts perfectly well.
+    if unoq.ping():
+        print("sketch: answering\n")
+    else:
+        print("sketch: no answer to mcu_ping - alerts should still work.")
+        print("        Re-deploy alert_sketch.ino to get the health check.\n")
+
+    # The count lives on the microcontroller and survives between runs.
+    unoq.reset_drive()
+
     try:
-        client = AlertClient(host=args.host)
-    except ValueError as exc:
-        sys.exit(str(exc))
+        for level in sorted(LEVEL_MEANING):
+            print(f"  level {level}  {LEVEL_MEANING[level]}")
+            print(f"           expect: {EXPECTED[level]}")
+            if not unoq.set_level(level):
+                sys.exit(f"\nFailed sending level {level}: {unoq.last_error}")
+            time.sleep(args.hold)
+    finally:
+        # Leave the board calm rather than strobing after we exit.
+        unoq.set_level(0)
+        unoq.reset_drive()
+        unoq.close()
 
-    print(f"UNO Q: {client.base_url}")
-
-    if not client.health():
-        sys.exit(
-            f"No answer from {client.base_url}/health\n\n"
-            "On the UNO Q, run:  python3 alert_listener.py\n"
-            "Then check both devices are on the same network."
-        )
-    print("listener is up\n")
-
-    # The strike count lives on the microcontroller, so it survives between
-    # runs. Clear it or the strip starts half lit from the last test.
-    try:
-        client.reset()
-        print("counter reset\n")
-    except requests.RequestException as exc:
-        sys.exit(f"Failed to reset the counter: {exc}")
-
-    for level in sorted(LEVEL_MEANING):
-        meaning = LEVEL_MEANING[level]
-        print(f"  level {level}  {meaning:<18}")
-        print(f"           expect: {EXPECTED[level]}")
-        try:
-            client.send(level)
-        except requests.RequestException as exc:
-            sys.exit(f"\nFailed sending level {level}: {exc}")
-        time.sleep(args.hold)
-
-    # Leave the board in the calm state rather than strobing after we exit.
-    client.send(0)
-    print("\ndone - back to level 0")
+    print("\ndone - back to level 0, counter cleared")
 
 
 if __name__ == "__main__":

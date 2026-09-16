@@ -1,4 +1,13 @@
-"""Alert listener - runs on the UNO Q Linux side.
+"""SUPERSEDED - replaced by unoq/mcp_server.py.
+
+This served alert levels over HTTP on the board's network port. wlan0 was
+down out of the box, so the laptop had no address to reach it on, and
+everything moved to MCP over the USB/ADB tunnel instead.
+
+Kept as the simpler fallback: it needs no fastmcp, only arduino_bridge.py,
+which now has no dependencies at all.
+
+Alert listener - runs on the UNO Q Linux side.
 
 Receives alert levels from the laptop over the local network and forwards them
 to the MCU sketch through the Arduino Router Bridge.

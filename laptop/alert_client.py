@@ -1,4 +1,14 @@
-"""Send alert levels from the laptop to the UNO Q.
+"""SUPERSEDED - the laptop now talks to the board over MCP/USB.
+
+This posted alert levels to alert_listener.py over the local network. That
+path cannot work as things stand: wlan0 on the board was down out of the
+box, so there was no address to POST to. Use laptop/unoq_mcp.py instead.
+
+Kept because the HTTP design is a reasonable fallback if the board ever
+needs to be driven from a machine with no USB access - but nothing in the
+project imports it today.
+
+Send alert levels from the laptop to the UNO Q.
 
 Used as a module by the detection code later, and as a CLI for testing now.
 
