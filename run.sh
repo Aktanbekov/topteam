@@ -10,6 +10,7 @@
 #   ./run.sh --compute cpu       ask GenieX for a different compute unit
 #   ./run.sh --demo fail         a short clip that ends in a critical error
 #   ./run.sh --demo pass --unoq  the clean run, with the board attached
+#   ./run.sh --calm              stop the board flashing and exit
 #
 # Demo grades: pass (full stop), brief (short but legal), fail (no stop at all).
 # They use synthetic clips, analysed for real by the local model, because we
@@ -31,6 +32,7 @@ VISION_EVERY=3.0
 COMPUTE=npu
 REUSE=0
 UNOQ=0
+CALM=0
 DEMO=""
 VIDEO=""
 FULL_STOP=""
@@ -49,6 +51,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --reuse) REUSE=1; shift ;;
     --unoq) UNOQ=1; shift ;;
+    --calm) CALM=1; shift ;;
     --every) VISION_EVERY="$2"; shift 2 ;;
     --compute) COMPUTE="$2"; shift 2 ;;
     --demo) DEMO="$2"; shift 2 ;;
@@ -96,6 +99,24 @@ fi
     If you installed it recently, open a NEW terminal - Windows only gives the
     updated PATH to newly started programs."
 
+# --------------------------------------------------------------------- calm
+# The sketch holds its last level forever - it cannot tell that the laptop has
+# gone away. So a drive that ended on a critical error leaves the strip flashing
+# until something says otherwise.
+mcp_port_open() {
+  "$PY" - "$MCP_PORT" <<'EOF'
+import socket, sys
+s = socket.socket(); s.settimeout(1)
+sys.exit(0 if s.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0 else 1)
+EOF
+}
+
+if [ "$CALM" = "1" ]; then
+  say "Calming the UNO Q"
+  "$PY" laptop/calm_board.py
+  exit 0
+fi
+
 # --------------------------------------------------------------------- demo
 # The demo grades pair a synthetic clip with the outcome it is meant to show.
 OUT_DIR=output
@@ -142,6 +163,15 @@ fi
 mkdir -p "$OUT_DIR"
 TIMELINE="$OUT_DIR/timeline.json"
 PLAYER="$OUT_DIR/player.html"
+
+# If a previous --unoq session left a tunnel up and this run is not going to
+# use it, the board is still showing that session's last verdict. Nothing else
+# will ever clear it, and the page has no relay to talk to - which looks exactly
+# like "the hardware is broken and the player does nothing".
+if [ "$UNOQ" = "0" ] && mcp_port_open; then
+  "$PY" laptop/calm_board.py --quiet || true
+  echo "    (found an idle UNO Q tunnel and returned the board to level 0)"
+fi
 
 say "Drive: $VIDEO"
 [ -n "$DEMO" ] && echo "    demo grade: $DEMO (synthetic footage, labelled as such)"

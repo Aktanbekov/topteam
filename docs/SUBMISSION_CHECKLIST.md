@@ -61,6 +61,8 @@ verify nothing has drifted.
 - [ ] `./run.sh --demo fail --unoq` fires level 1 at 6s and level 3 at **16s**
 - [ ] Rewinding does not buzz twice
 - [ ] Ctrl-C leaves the board calm
+- [ ] `./run.sh --calm` works from a cold terminal (know this one by heart — it
+      is what you type when the strip is flashing and people are watching)
 - [ ] Spare USB-C cable in the bag
 - [ ] If you re-flash the sketch for any reason, re-run `test_signals.py`
       immediately — do not re-flash on the day without testing

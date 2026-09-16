@@ -136,6 +136,25 @@ reintroduce that dependency.**
 
 ## Troubleshooting
 
+**The board will not stop flashing, and the player makes no difference** — the
+sketch holds whatever level it was last told, forever. It has no way to know the
+laptop has gone away, so a drive that ended on a critical error leaves the strip
+flashing red and the matrix showing an X indefinitely. If the next thing you run
+does not use `--unoq` there is no relay connected either, which is why pressing
+play changes nothing: the page genuinely has nowhere to send anything.
+
+```bash
+./run.sh --calm
+```
+
+There is also a **Stop the board** button in the player's hardware panel, the
+page sends a reset when you close the tab, and `./run.sh` calms an idle board at
+the start of any run that is not going to drive it.
+
+**On Windows, closing the terminal window abruptly still leaves it flashing.**
+`taskkill /F` and a closed console give Python no chance to run its shutdown, so
+nothing gets sent. Ctrl-C in the terminal does clean up. Otherwise, `--calm`.
+
 **`could not connect to /var/run/arduino-router.sock`** — the router daemon
 isn't running. On the UNO Q: `systemctl status arduino-router`, and restart it
 with `sudo systemctl restart arduino-router`.

@@ -179,6 +179,7 @@ python -m pytest
 - [ ] Scrub backwards over 16s: the motor does **not** buzz again (this is a
       feature; be ready to say so if someone notices)
 - [ ] The report opens and prints
+- [ ] `./run.sh --calm` leaves the board green before you start
 - [ ] Backup recording is on the desktop and plays
 
 ## If it falls over on stage
@@ -189,3 +190,4 @@ python -m pytest
 | The board is not found | Drop `--unoq`. The page is the whole product without it, and the UNO Q panel says "not connected" rather than lying. |
 | The browser will not play the video | Everything else on the page still works. Talk through the evidence cards and the report instead. |
 | Nothing works at all | Play the backup recording. Say "this is a recording of the run" — do not let anyone find that out for themselves. |
+| The board is stuck flashing from the last run | `./run.sh --calm`, or the **Stop the board** button in the hardware panel. Do this between rehearsals — a strip flashing red while you introduce yourself is not the first impression you want. |

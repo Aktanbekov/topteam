@@ -265,6 +265,7 @@ Other flags:
 | `--every 5` | sample the model every 5s instead of 3 |
 | `--compute cpu` | ask GenieX for a different compute unit |
 | `--full-stop 2` | change how long a stop must last to count as full |
+| `--calm` | stop the board flashing and exit — nothing else |
 | `--window-after 12` | how long after the sign leaves the frame to keep looking |
 
 Run the tests — no model, no board, no video needed:
@@ -329,6 +330,7 @@ laptop/
   report.py          the deterministic report
   narrate.py         optional prose from a local text model, heavily fenced
   unoq_mcp.py        the board client, and seek-safe event replay
+  calm_board.py      put the board back to level 0 — the "make it stop" button
 tools/
   make_player.py     orchestrates a build: review.json + player.html + report.html
   serve_player.py    localhost server with byte ranges, and the hardware relay
@@ -389,6 +391,7 @@ archive/             the superseded HTTP-over-Wi-Fi transport, and why
 | Frames arrive sideways | phone rotation flags are not applied on decode. Film in landscape, or pass `--rotate 90\|180\|270`. |
 | `secure_mkdirs failed` on `adb push` | Git Bash rewrote `/home/arduino/...` into a Windows path. Prefix with `MSYS_NO_PATHCONV=1`. |
 | Board connected but nothing moves | `mcu_ping` is the only call that proves the *sketch* is running — the others only prove the router took the bytes. Check the hardware panel on the page. |
+| **Board keeps flashing and the player has no effect** | The sketch holds its last level forever — it cannot tell the laptop has gone. A `--demo fail` run ends on level 3 and stays there. Fix: `./run.sh --calm`, or the **Stop the board** button on the page. `./run.sh` now also calms an idle board at the start of any run that is not using it. |
 | The LED matrix is blank | draw rate. Never call `matrix.draw()` straight from `loop()`; the scan never settles. See `unoq/README.md`. |
 | `pip install fastmcp` fails | `pip install --only-binary :all: cryptography` first. |
 | GenieX will not start | `./run.sh --demo fail` falls back to recorded scene labels and says so on the page. |

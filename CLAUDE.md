@@ -484,6 +484,15 @@ rolling stop or red-light crossing before anything else.
   The signal smoke test deliberately uses only the built-in LED so no wiring is needed.
 
 ## Answered
+- **Why the board would not stop flashing:** the sketch holds its last level
+  forever and has no way to know the laptop has gone. A `--demo fail` run ends on
+  level 3 and stays there; a later run without `--unoq` never touches it, and the
+  page has no relay, so play/pause genuinely does nothing. Four fixes, none of
+  which need a re-flash: `./run.sh --calm`, a **Stop the board** button on the
+  page, a reset sent on tab unload, and `run.sh` calming an idle board at the
+  start of any run that is not driving it. On Windows, killing the terminal
+  abruptly still leaves it lit - Python gets no chance to clean up - so `--calm`
+  is the one to remember.
 - **Is it really running on the NPU?** The QAIRT plugin will not run anywhere else
   and says so. `geniex serve -c cpu` logs:
   `qairt plugin only supports NPU inference; ignoring device='cpu' and running on NPU`

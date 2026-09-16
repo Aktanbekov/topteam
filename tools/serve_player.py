@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import socket
 import sys
 import webbrowser
@@ -319,16 +320,34 @@ def main():
     if args.open:
         webbrowser.open(url)
 
+    # Ctrl-C is not the only way this ends. A `pkill`, a closed terminal or a
+    # stop from a launcher all arrive as SIGTERM, and without a handler Python
+    # dies where it stands - leaving the board holding whatever level the drive
+    # ended on. For a drive that ended on a critical error that is a strip
+    # flashing red until somebody runs ./run.sh --calm.
+    def stop(_signum, _frame):
+        raise KeyboardInterrupt
+
+    for name in ("SIGTERM", "SIGBREAK", "SIGHUP"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            try:
+                signal.signal(sig, stop)
+            except (ValueError, OSError):
+                pass  # not available on this platform or not the main thread
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nstopping")
     finally:
         server.server_close()
-        # Leave the board calm rather than strobing after we exit.
+        # Leave the board calm rather than strobing after we exit. The sketch
+        # holds its last level forever and has no way to tell that we have gone.
         if REPLAY is not None:
             REPLAY.apply(0, REPLAY.max_seq + 1)
             REPLAY.reset()
+            print("  board returned to level 0")
         if BOARD is not None:
             BOARD.close()
 

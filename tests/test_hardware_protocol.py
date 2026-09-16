@@ -173,3 +173,38 @@ def test_status_is_json_safe():
     import json
 
     json.dumps(EventReplay(FakeBoard()).status())
+
+
+# -------------------------------------------------------------------- calm
+def test_calm_returns_the_board_to_level_zero(monkeypatch):
+    """The "make it stop" path.
+
+    The sketch holds its last level forever and has no way to know the laptop
+    has gone away, so a drive that ended on a critical error leaves the strip
+    flashing until something says otherwise.
+    """
+    import calm_board
+
+    board = FakeBoard()
+    board.connect = lambda: True
+    board.close = lambda: None
+    board.last_error = None
+    monkeypatch.setattr(calm_board, "UnoQ", lambda url=None: board)
+
+    assert calm_board.calm(quiet=True) is True
+    assert board.levels == [0]
+    assert board.resets == 1
+
+
+def test_calm_is_quiet_and_successful_when_there_is_no_board(monkeypatch):
+    """Absent hardware must never make a command fail."""
+    import calm_board
+
+    class NoBoard:
+        last_error = "no MCP server"
+
+        def connect(self):
+            return False
+
+    monkeypatch.setattr(calm_board, "UnoQ", lambda url=None: NoBoard())
+    assert calm_board.calm(quiet=True) is False

@@ -293,6 +293,7 @@
         <dt>events sent</dt><dd id="hwSent">—</dd>
       </dl>
       <button class="btn wide" id="replay">Replay drive from the start</button>
+      <button class="btn wide" id="calm">Stop the board</button>
       <p class="hint" id="hwHint"></p>
     </div>
 
@@ -677,7 +678,25 @@ $("replay").addEventListener("click", () => {
   video.currentTime = 0;
   resetHW().then(() => video.play());
 });
+
+// The sketch holds its last level forever - it has no way to know the page has
+// gone. Without this, a drive that ended on a critical error leaves the strip
+// flashing red and the only cure is ./run.sh --calm from a terminal.
+$("calm").addEventListener("click", () => {
+  video.pause();               // or the next timeupdate re-sends the level
+  resetHW().then(refreshStatus);
+});
+
 video.addEventListener("play", () => { if (video.currentTime < 0.5) resetHW(); });
+
+// Closing the tab or navigating away should not leave hardware strobing.
+// sendBeacon is the only request the browser promises to deliver during unload.
+window.addEventListener("pagehide", () => {
+  if (hwOffline || !navigator.sendBeacon) return;
+  try {
+    navigator.sendBeacon("/api/reset", new Blob(["{}"], { type: "application/json" }));
+  } catch (e) { /* nothing useful to do while the page is closing */ }
+});
 
 function refreshStatus() {
   const badge = $("hwBadge");
@@ -688,7 +707,8 @@ function refreshStatus() {
     $("hwSent").textContent = "—";
     $("hwHint").textContent =
       "The review works fully without the board. To drive it, run ./run.sh --unoq " +
-      "so the page is served and the USB relay is running.";
+      "so the page is served and the USB relay is running. If the board is stuck " +
+      "showing an old verdict, run ./run.sh --calm.";
     return;
   }
   fetch("/api/status").then(r => r.json()).then(s => {

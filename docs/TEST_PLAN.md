@@ -125,6 +125,7 @@ gap is 0.24 to 0.31 — only 25% — so do not tighten 0.25 without re-running t
 | no narrative model | it is not pulled | report renders the deterministic summary; no error |
 | unplayable video | open `player.html` from `file://` | page still works, notice appears, report unaffected |
 | no board | omit `--unoq` | hardware panel says "not connected"; everything else works |
+| board stuck flashing | end a `--demo fail` run, then `./run.sh --calm` | board returns to green; a later `./run.sh` also calms an idle board at startup |
 
 ---
 
@@ -156,6 +157,10 @@ Then the real path:
 - [ ] Scrub back over 16s and play forward: **no second buzz**, and the panel's
       "skipped on rewind" count goes up
 - [ ] Ctrl-C: board is left on level 0, not strobing
+- [ ] **Stop the board** in the hardware panel calms it mid-drive
+- [ ] Closing the tab calms it (the page sends a reset on unload)
+- [ ] `./run.sh --calm` calms it from a cold terminal
+- [ ] A later `./run.sh` with no `--unoq` calms an idle board at startup
 
 ### Verified on the board (2026-09-16)
 
