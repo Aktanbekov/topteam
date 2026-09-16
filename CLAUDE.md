@@ -43,6 +43,11 @@ A second, driver-facing camera (laptop webcam) covers head checks.
 - **No OpenCV.** `opencv-python` and `opencv-python-headless` have no Windows ARM64
   wheel and fail to build from source on this laptop. Verified 2026-09-15. Instead:
   - **PyAV** (`av`) decodes the dashcam video frame by frame — ffmpeg bindings, ARM64 wheel works.
+    Tested 2026-09-15: `.mp4`, `.mov` and HEVC-in-`.mov` all decode to byte-identical results,
+    so **use whatever your camera or phone produces — no converting needed.** The container and
+    codec do not matter. What does matter is **rotation**: phone footage carries a rotation flag
+    that PyAV does not apply on decode, so frames can arrive sideways and confuse the vision
+    model. Film in landscape, or pass `--rotate 90|180|270`.
   - **numpy** does the frame differencing / ego-motion maths.
   - Pillow encodes frames for the vision model and the report screenshots.
 - GenieX CLI v0.6.0 (QAIRT 2.45), installed at `%LOCALAPPDATA%\GenieX CLI\geniex.exe`

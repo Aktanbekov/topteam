@@ -30,9 +30,16 @@ class Frame:
 
 
 class VideoSource:
-    """Sequential reader over a video file."""
+    """Sequential reader over a video file.
 
-    def __init__(self, path):
+    Container format does not matter: .mp4, .mov and .mkv all work, and both
+    H.264 and HEVC decode fine (tested 2026-09-15). What does matter is
+    rotation. Phone footage carries a rotation flag that PyAV does NOT apply
+    when decoding, so the frames can arrive sideways - which wrecks the vision
+    model's reading of the scene. Pass rotate=90/180/270 to correct it.
+    """
+
+    def __init__(self, path, rotate=None):
         self.path = Path(path)
         if not self.path.is_file():
             raise FileNotFoundError(f"no such video: {self.path}")
@@ -45,6 +52,31 @@ class VideoSource:
             raise ValueError(f"{self.path} has no video stream") from None
 
         self.stream.thread_type = "AUTO"  # let ffmpeg use multiple cores
+        self.rotate = self._resolve_rotation(rotate)
+
+    def _resolve_rotation(self, rotate):
+        """Pick a rotation: explicit argument wins, else the container's flag."""
+        if rotate is not None:
+            if rotate % 90:
+                raise ValueError(f"rotate must be a multiple of 90, got {rotate}")
+            return rotate % 360
+
+        # Older QuickTime files expose it here. Newer ones use a display matrix
+        # in side data, which PyAV 18 does not give us a getter for - hence the
+        # portrait warning below and the manual override.
+        tag = self.stream.metadata.get("rotate")
+        if tag:
+            try:
+                return int(tag) % 360
+            except ValueError:
+                pass
+        return 0
+
+    @property
+    def looks_portrait(self):
+        """True if frames are taller than wide - usually a rotation problem."""
+        w, h = self.size
+        return h > w
 
     @property
     def fps(self):
@@ -86,7 +118,14 @@ class VideoSource:
                 width=MOTION_W, height=MOTION_H, format="gray"
             ).to_ndarray()
 
-            yield Frame(t=t, rgb=av_frame.to_ndarray(format="rgb24"), gray=gray)
+            rgb = av_frame.to_ndarray(format="rgb24")
+            if self.rotate:
+                # Only the RGB needs correcting. The motion layer measures
+                # texture change, which is orientation-independent, so leaving
+                # the grey frame alone saves work and changes nothing.
+                rgb = np.rot90(rgb, k=self.rotate // 90)
+
+            yield Frame(t=t, rgb=rgb, gray=gray)
 
     def close(self):
         self._container.close()

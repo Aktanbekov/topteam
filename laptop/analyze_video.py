@@ -57,6 +57,13 @@ def main():
         default=None,
         help="directory to write the sampled frames to, for the report later",
     )
+    parser.add_argument(
+        "--rotate",
+        type=int,
+        default=None,
+        choices=[0, 90, 180, 270],
+        help="rotate frames if phone footage comes out sideways",
+    )
     parser.add_argument("--json-out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -68,9 +75,15 @@ def main():
         )
 
     try:
-        source = VideoSource(args.video)
+        source = VideoSource(args.video, rotate=args.rotate)
     except (FileNotFoundError, ValueError) as exc:
         sys.exit(str(exc))
+
+    if source.looks_portrait and not source.rotate:
+        print(
+            "  NOTE: frames are taller than wide. If the road looks sideways in\n"
+            "        --save-frames output, re-run with --rotate 90 or --rotate 270.\n"
+        )
 
     if args.save_frames:
         args.save_frames.mkdir(parents=True, exist_ok=True)
