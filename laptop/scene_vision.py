@@ -20,10 +20,7 @@ BASE_URL = "http://127.0.0.1:18181/v1"
 MODEL = "qualcomm/Qwen3-VL-4B-Instruct:W4A16"
 TIMEOUT_S = 180
 
-SCENE_PROMPT = (
-    "You are looking at one frame from a car's forward dashcam. "
-    "Report only what is visible in this frame. Reply with JSON only, "
-    "no explanation and no markdown:\n"
+JSON_SHAPE = (
     '{"stop_sign": true/false, '
     '"traffic_light": "red"/"yellow"/"green"/"none", '
     '"light_is_for_our_lane": true/false, '
@@ -31,6 +28,48 @@ SCENE_PROMPT = (
     '"pedestrian_in_crosswalk": true/false, '
     '"car_ahead_close": true/false}'
 )
+
+# The first prompt we shipped. Kept so tools/eval_scene_prompt.py can show the
+# improvement, and so we can fall back if a change makes things worse.
+TERSE_PROMPT = (
+    "You are looking at one frame from a car's forward dashcam. "
+    "Report only what is visible in this frame. Reply with JSON only, "
+    "no explanation and no markdown:\n" + JSON_SHAPE
+)
+
+# Measured on IMG_9830 (2026-09-15): the terse prompt above answers true far
+# too readily. It claimed a close car ahead on 7 frames of empty road, a red
+# light on 4 frames with no signal anywhere, and a pedestrian on 4 frames with
+# nobody in them. A bare menu of true/false invites the model to pick
+# something; naming what each field excludes takes that invitation away.
+STRICT_PROMPT = (
+    "You are looking at ONE still frame from a car's forward dashcam.\n"
+    "\n"
+    "Answer only from what is clearly visible in THIS frame. Most frames of an\n"
+    "ordinary drive contain none of these things, so false/none is the normal\n"
+    "answer. A false alarm is worse than a miss: when in doubt, answer false.\n"
+    "\n"
+    "stop_sign: a red octagonal STOP sign facing the road we are driving on.\n"
+    "traffic_light: the colour of a lit traffic signal. Only answer red, yellow\n"
+    "  or green if you can see the signal housing itself, hanging over or beside\n"
+    "  the road with a lamp lit in it. A red octagonal STOP sign is NOT a\n"
+    "  traffic light. Brake lights, tail lights and red signs are NOT traffic\n"
+    "  lights. If you cannot see a signal head, answer none.\n"
+    "light_is_for_our_lane: false unless traffic_light is red, yellow or green\n"
+    "  AND that signal governs the lane we are driving in.\n"
+    "stop_line_visible: a solid white bar painted across our own lane, where a\n"
+    "  car must stop. Crosswalk stripes, lane markings, arrows and words painted\n"
+    "  on the road are NOT stop lines.\n"
+    "pedestrian_in_crosswalk: a person standing or walking on the roadway. A\n"
+    "  person on the pavement or sidewalk is false.\n"
+    "car_ahead_close: a vehicle in our own lane, directly ahead of us, near\n"
+    "  enough that we would have to brake for it. Parked cars, cars on cross\n"
+    "  streets, oncoming cars and cars far down the road are all false.\n"
+    "\n"
+    "Reply with JSON only, no explanation and no markdown:\n" + JSON_SHAPE
+)
+
+SCENE_PROMPT = STRICT_PROMPT
 
 # What we fall back to when a call fails. Every field false/none means "saw
 # nothing", which is the safe default: it can only cause a missed detection,
@@ -57,6 +96,20 @@ def extract_json(text):
         return None
 
 
+def tidy(scene):
+    """Repair answers that contradict themselves.
+
+    The model happily returns light_is_for_our_lane=true alongside
+    traffic_light="none" (three times in the IMG_9830 pass). Whatever it meant,
+    a lane-relevant signal with no signal is not a fact we can act on, so the
+    field goes back to false. Same for an unrecognised colour.
+    """
+    if scene.get("traffic_light") not in ("red", "yellow", "green"):
+        scene["traffic_light"] = "none"
+        scene["light_is_for_our_lane"] = False
+    return scene
+
+
 class SceneVision:
     """One scene-labelling call per frame handed to it."""
 
@@ -73,10 +126,11 @@ class SceneVision:
         encoded = base64.b64encode(buf.getvalue()).decode()
         return f"data:image/jpeg;base64,{encoded}"
 
-    def describe(self, rgb):
+    def describe(self, rgb, prompt=None):
         """Label one frame. Returns (scene_dict, error_or_None).
 
         Never raises: a dropped call should not end the drive analysis.
+        `prompt` overrides SCENE_PROMPT, which is what the eval tool uses.
         """
         self.calls += 1
         payload = {
@@ -85,7 +139,7 @@ class SceneVision:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": SCENE_PROMPT},
+                        {"type": "text", "text": prompt or SCENE_PROMPT},
                         {
                             "type": "image_url",
                             "image_url": {"url": self._data_url(rgb)},
@@ -115,7 +169,7 @@ class SceneVision:
         # Fill in anything the model left out rather than raising KeyError later.
         scene = dict(EMPTY_SCENE)
         scene.update({k: v for k, v in parsed.items() if k in EMPTY_SCENE})
-        return scene, None
+        return tidy(scene), None
 
     def health(self):
         """True if the GenieX server answers."""

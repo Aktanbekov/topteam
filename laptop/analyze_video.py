@@ -20,6 +20,7 @@ from pathlib import Path
 from PIL import Image
 
 from ego_motion import MOTION_THRESHOLD, EgoMotion
+from scene_filter import confirm, dropped
 from scene_vision import SceneVision
 from video_source import VideoSource
 
@@ -137,6 +138,15 @@ def main():
     elapsed = time.perf_counter() - started
     print(f"\n  {len(timeline)} samples in {elapsed:.1f}s")
     print(f"  vision calls: {vision.calls}, failed: {vision.failures}")
+
+    # The table above is the model's raw answer, one frame at a time. This is
+    # what survives being checked against the samples either side of it.
+    confirm(timeline, spacing=args.vision_every)
+    rejected = dropped(timeline)
+    if rejected:
+        print(f"  {len(rejected)} unconfirmed detection(s), ignored downstream:")
+        for t, field, value in rejected:
+            print(f"    {t:6.1f}s  {field} = {value!r}")
 
     stop_sign_seen = [s["t"] for s in timeline if s["scene"]["stop_sign"]]
     if stop_sign_seen:

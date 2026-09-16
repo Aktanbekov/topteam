@@ -40,6 +40,7 @@
     border: 1px solid transparent;
   }
   .verdict.pass { background: rgba(63,185,80,.14); color: var(--green); border-color: rgba(63,185,80,.35); }
+  .verdict.brief { background: rgba(210,153,34,.14); color: var(--amber); border-color: rgba(210,153,34,.35); }
   .verdict.flag { background: rgba(248,81,73,.14); color: var(--red); border-color: rgba(248,81,73,.35); }
 
   .wrap { padding: 20px; display: grid; gap: 16px; grid-template-columns: minmax(0,1fr) 320px; }
@@ -58,6 +59,12 @@
   .chip.on-warn { color: #241a00; background: rgba(210,153,34,.92); border-color: transparent; }
   .chip.state { color: var(--dim); }
   .chip.state.stopped { color: var(--green); border-color: rgba(63,185,80,.4); }
+  /* What the model claimed and no neighbouring sample backed up. Shown, but
+     never acted on - it is the most honest thing on the page. */
+  .chip.unconfirmed {
+    color: var(--dim); font-weight: 500; background: rgba(13,17,23,.6);
+    border-style: dashed; text-decoration: line-through;
+  }
 
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
   .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; }
@@ -95,6 +102,7 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; align-self: center; }
   .dot.sign { background: var(--amber); }
   .dot.pass { background: var(--green); }
+  .dot.brief { background: var(--amber); }
   .dot.fail { background: var(--red); }
   .dot.stop { background: var(--blue); }
   .dot.light { background: var(--red); }
@@ -177,13 +185,18 @@ document.getElementById("meta").textContent =
   `${DATA.meta.width}x${DATA.meta.height} · ${DATA.meta.fps}fps · ${DATA.meta.duration}s · threshold ${DATA.threshold}`;
 
 // --- verdict badges -------------------------------------------------------
+// Three grades, not two. A stop that happened but lasted under the target is
+// legal and still worth saying out loud, so it gets its own amber badge rather
+// than being waved through as a clean pass.
+const GRADE_CLASS = { pass: "pass", brief: "brief", fail: "flag" };
 document.getElementById("verdicts").innerHTML = DATA.verdicts.length
   ? DATA.verdicts.map(v => {
-      const cls = v.stopped ? "pass" : "flag";
-      const label = v.stopped
-        ? `Stop sign ${v.start.toFixed(0)}s — full stop (${v.stop_len.toFixed(1)}s)`
-        : `Stop sign ${v.start.toFixed(0)}s — possible incomplete stop`;
-      return `<span class="verdict ${cls}">${label}</span>`;
+      const at = `Stop sign ${v.start.toFixed(0)}s`;
+      const label =
+        v.grade === "pass"  ? `${at} — full stop (${v.stop_len.toFixed(1)}s)` :
+        v.grade === "brief" ? `${at} — only ${v.stop_len.toFixed(1)}s, aim for ${v.target_s.toFixed(0)}s` :
+                              `${at} — possible incomplete stop`;
+      return `<span class="verdict ${GRADE_CLASS[v.grade]}">${label}</span>`;
     }).join("")
   : `<span class="verdict pass">No stop signs detected</span>`;
 
@@ -295,7 +308,12 @@ function update() {
   let light = "—";
 
   if (sample) {
-    const s = sample.scene;
+    // "confirmed" is what we act on: the model's answer with anything no
+    // neighbouring sample agreed with stripped out. "scene" is the raw answer,
+    // shown crossed out so the filtering is visible rather than magic.
+    const s = sample.confirmed || sample.scene;
+    const raw = sample.scene;
+
     if (s.stop_sign) chips.push(`<span class="chip on-sign">STOP SIGN</span>`);
     if (s.traffic_light !== "none") {
       light = s.traffic_light + (s.light_is_for_our_lane ? " (ours)" : " (not ours)");
@@ -306,6 +324,16 @@ function update() {
     if (s.pedestrian_in_crosswalk) chips.push(`<span class="chip on-warn">PEDESTRIAN</span>`);
     if (s.car_ahead_close) chips.push(`<span class="chip on-warn">CAR AHEAD CLOSE</span>`);
     if (s.stop_line_visible) chips.push(`<span class="chip">stop line</span>`);
+
+    const unconfirmed = [];
+    if (raw.traffic_light !== "none" && s.traffic_light === "none")
+      unconfirmed.push(raw.traffic_light + " light");
+    if (raw.pedestrian_in_crosswalk && !s.pedestrian_in_crosswalk) unconfirmed.push("pedestrian");
+    if (raw.car_ahead_close && !s.car_ahead_close) unconfirmed.push("car ahead close");
+    if (raw.stop_line_visible && !s.stop_line_visible) unconfirmed.push("stop line");
+    unconfirmed.forEach(label => chips.push(
+      `<span class="chip unconfirmed" title="the model said this once and no neighbouring sample agreed, so we ignore it">${label}</span>`
+    ));
   }
 
   document.getElementById("rLight").textContent = light;

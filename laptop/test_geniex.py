@@ -26,14 +26,10 @@ BASE_URL = "http://127.0.0.1:18181/v1"
 MODEL = "qualcomm/Qwen3-VL-4B-Instruct:W4A16"
 TIMEOUT_S = 180
 
-# The scene question the real detector will ask. Keeping it here means the
-# smoke test exercises the same shape of request as the actual pipeline.
-SCENE_PROMPT = (
-    "Look at this dashcam frame. Reply with JSON only, no other text:\n"
-    '{"stop_sign": bool, "traffic_light": "red"|"yellow"|"green"|"none", '
-    '"light_is_for_our_lane": bool, "stop_line_visible": bool, '
-    '"pedestrian_in_crosswalk": bool}'
-)
+# The scene question the real detector asks, imported rather than copied - a
+# second copy drifts, and then the smoke test passes on a prompt we no longer
+# ship. See tools/eval_scene_prompt.py for how this one was chosen.
+from scene_vision import SCENE_PROMPT  # noqa: E402
 
 
 def check_server():

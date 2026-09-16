@@ -28,6 +28,7 @@ import av
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "laptop"))
 
 from ego_motion import MOTION_THRESHOLD, EgoMotion  # noqa: E402
+from scene_filter import confirm, dropped  # noqa: E402
 from test_video import find_stops  # noqa: E402
 from video_source import VideoSource  # noqa: E402
 
@@ -36,6 +37,18 @@ TEMPLATE = Path(__file__).resolve().parent.parent / "report" / "player_template.
 # How long after a stop sign leaves the frame we keep looking for the stop.
 # Real footage: sign gone by 63s, stop at 64-65s. 10s gives comfortable margin.
 DEFAULT_WINDOW_AFTER = 10.0
+
+# How long a stop should last. California does not put a number on it - the law
+# asks for a complete stop, full stop - but every instructor teaches "count to
+# three", and a driver who is stationary for a moment has not really looked. So
+# a stop shorter than this passes the legal test and still earns a coaching
+# note; it is never counted as a DMV error.
+DEFAULT_FULL_STOP_S = 3.0
+
+# Below this many samples a stop-sign sighting is treated as noise rather than
+# an approach. One frame is not enough to start accusing the driver of running
+# a sign - see scene_filter for the same argument applied per field.
+MIN_SIGN_SAMPLES = 2
 
 # What browsers will actually decode. Note .mov is absent deliberately: Chrome
 # and Edge routinely refuse a QuickTime file even when the video inside is
@@ -122,43 +135,72 @@ def dense_motion(video_path, threshold, rotate=None):
     return readings, meta
 
 
-def sign_windows(samples, gap_tolerance=6.0):
+def sample_spacing(samples, default=3.0):
+    """Seconds between vision samples, read off the timeline rather than assumed."""
+    gaps = [b["t"] - a["t"] for a, b in zip(samples, samples[1:])]
+    if not gaps:
+        return default
+    return sorted(gaps)[len(gaps) // 2]
+
+
+def sign_windows(samples, gap_tolerance=6.0, min_samples=MIN_SIGN_SAMPLES):
     """Contiguous stretches where a stop sign was visible.
 
     A sample or two without the sign does not end the window - the sign can be
-    hidden by a tree or a van and then reappear.
+    hidden by a tree or a van and then reappear. A window built from fewer than
+    `min_samples` sightings is dropped: it is more likely a misreading than a
+    junction, and a phantom junction turns into a phantom critical error.
     """
     windows = []
     current = None
 
+    def close(w):
+        if w["samples"] >= min_samples:
+            windows.append(w)
+
     for s in samples:
         if s["scene"]["stop_sign"]:
             if current is None:
-                current = {"start": s["t"], "end": s["t"]}
+                current = {"start": s["t"], "end": s["t"], "samples": 1}
             else:
                 current["end"] = s["t"]
+                current["samples"] += 1
         elif current is not None and s["t"] - current["end"] > gap_tolerance:
-            windows.append(current)
+            close(current)
             current = None
 
     if current is not None:
-        windows.append(current)
+        close(current)
     return windows
 
 
-def judge(windows, stops, window_after):
-    """Decide, for each stop sign, whether the car stopped for it.
+def judge(windows, stops, window_after, full_stop_s=DEFAULT_FULL_STOP_S):
+    """Decide, for each stop sign, whether the car stopped for it and for how long.
 
     The sign leaves the forward view before the car reaches the line, so the
     stop almost always lands AFTER the sign was last seen. Looking only inside
     the visible window would fail every legitimate stop.
+
+    Three outcomes, not two. A stop that happened but lasted under full_stop_s
+    is legal in California and still worth telling the driver about, so it gets
+    its own grade instead of being filed away as a clean pass.
     """
     verdicts = []
     for w in windows:
         deadline = w["end"] + window_after
-        matched = next(
-            (st for st in stops if w["start"] <= st[0] <= deadline), None
-        )
+        inside = [st for st in stops if w["start"] <= st[0] <= deadline]
+        # The longest stop in the window, not the first: an approach often dips
+        # under the threshold for a moment before the real stop.
+        matched = max(inside, key=lambda st: st[1] - st[0], default=None)
+        length = round(matched[1] - matched[0], 2) if matched else None
+
+        if matched is None:
+            grade, verdict = "fail", "possible incomplete stop"
+        elif length < full_stop_s:
+            grade, verdict = "brief", "stopped, but only briefly"
+        else:
+            grade, verdict = "pass", "full stop"
+
         verdicts.append(
             {
                 "start": w["start"],
@@ -166,18 +208,24 @@ def judge(windows, stops, window_after):
                 "deadline": round(deadline, 2),
                 "stopped": matched is not None,
                 "stop_at": round(matched[0], 2) if matched else None,
-                "stop_len": round(matched[1] - matched[0], 2) if matched else None,
-                "verdict": "full stop" if matched else "possible incomplete stop",
+                "stop_len": length,
+                "target_s": full_stop_s,
+                "grade": grade,
+                "verdict": verdict,
             }
         )
     return verdicts
 
 
 def alert_level(sample, verdicts):
-    """The level we would send to the UNO Q at this moment (see the brief)."""
-    scene = sample["scene"]
+    """The level we would send to the UNO Q at this moment (see the brief).
+
+    Reads "confirmed", not "scene": nothing the model said only once gets to
+    light an LED or buzz a motor.
+    """
+    scene = sample["confirmed"]
     for v in verdicts:
-        if not v["stopped"] and v["end"] <= sample["t"] <= v["deadline"]:
+        if v["grade"] == "fail" and v["end"] <= sample["t"] <= v["deadline"]:
             return 3
     if scene["stop_sign"]:
         return 1
@@ -186,6 +234,25 @@ def alert_level(sample, verdicts):
     if scene["pedestrian_in_crosswalk"]:
         return 1
     return 0
+
+
+def runs(samples, predicate, min_samples=2):
+    """Stretches of consecutive samples matching `predicate`, as (start, end)."""
+    out = []
+    start = last = None
+    count = 0
+    for s in samples:
+        if predicate(s):
+            if start is None:
+                start, count = s["t"], 0
+            last, count = s["t"], count + 1
+        else:
+            if start is not None and count >= min_samples:
+                out.append((start, last))
+            start, count = None, 0
+    if start is not None and count >= min_samples:
+        out.append((start, last))
+    return out
 
 
 def build_events(samples, stops, verdicts):
@@ -198,12 +265,23 @@ def build_events(samples, stops, verdicts):
                 "text": f"Stop sign ahead (visible to {v['end']:.0f}s)",
             }
         )
-        if v["stopped"]:
+        if v["grade"] == "pass":
             events.append(
                 {
                     "t": v["stop_at"],
                     "kind": "pass",
-                    "text": f"Full stop made - {v['stop_len']:.1f}s stationary",
+                    "text": f"Full stop - {v['stop_len']:.1f}s at a standstill",
+                }
+            )
+        elif v["grade"] == "brief":
+            events.append(
+                {
+                    "t": v["stop_at"],
+                    "kind": "brief",
+                    "text": (
+                        f"Stopped, but only {v['stop_len']:.1f}s - "
+                        f"hold it for {v['target_s']:.0f}s"
+                    ),
                 }
             )
         else:
@@ -228,10 +306,19 @@ def build_events(samples, stops, verdicts):
             }
         )
 
-    lit = [s for s in samples if s["scene"]["traffic_light"] == "red"]
-    if lit:
+    # One event per stretch of red light, not one for the whole drive. Only
+    # confirmed sightings count, so a single hallucinated frame stays silent.
+    for start, end in runs(
+        samples,
+        lambda s: s["confirmed"]["traffic_light"] == "red"
+        and s["confirmed"]["light_is_for_our_lane"],
+    ):
         events.append(
-            {"t": lit[0]["t"], "kind": "light", "text": "Red light reported"}
+            {
+                "t": start,
+                "kind": "light",
+                "text": f"Red light for our lane, still red at {end:.0f}s",
+            }
         )
 
     return sorted(events, key=lambda e: e["t"])
@@ -244,6 +331,13 @@ def main():
     parser.add_argument("--out", type=Path, default=Path("output/player.html"))
     parser.add_argument("--threshold", type=float, default=MOTION_THRESHOLD)
     parser.add_argument("--window-after", type=float, default=DEFAULT_WINDOW_AFTER)
+    parser.add_argument(
+        "--full-stop",
+        type=float,
+        default=DEFAULT_FULL_STOP_S,
+        help="seconds a stop should last before it counts as a good one "
+        f"(default: {DEFAULT_FULL_STOP_S:.0f}, the 'count to three' rule)",
+    )
     parser.add_argument("--rotate", type=int, default=None, choices=[0, 90, 180, 270])
     args = parser.parse_args()
 
@@ -255,12 +349,14 @@ def main():
         )
 
     samples = json.loads(args.timeline.read_text())
+    samples = confirm(samples, spacing=sample_spacing(samples))
+    rejected = dropped(samples)
 
     print("recomputing dense motion track...")
     readings, meta = dense_motion(args.video, args.threshold, args.rotate)
     stops = find_stops(readings)
     windows = sign_windows(samples)
-    verdicts = judge(windows, stops, args.window_after)
+    verdicts = judge(windows, stops, args.window_after, args.full_stop)
 
     for s in samples:
         s["level"] = alert_level(s, verdicts)
@@ -274,6 +370,7 @@ def main():
         ).as_posix(),
         "name": args.video.name,
         "threshold": args.threshold,
+        "full_stop_s": args.full_stop,
         "meta": meta,
         # Thin the dense track: one point per ~0.1s is plenty for a graph and
         # keeps the HTML small.
@@ -286,6 +383,7 @@ def main():
         "stops": [[round(a, 2), round(b, 2)] for a, b in stops],
         "verdicts": verdicts,
         "events": build_events(samples, stops, verdicts),
+        "rejected": [[round(t, 2), field, value] for t, field, value in rejected],
     }
 
     html = TEMPLATE.read_text(encoding="utf-8").replace(
@@ -296,9 +394,19 @@ def main():
     print(f"\nwrote {args.out}")
     print(f"  {len(data['motion'])} motion points, {len(samples)} vision samples")
     print(f"  {len(stops)} stationary windows, {len(verdicts)} stop-sign approach(es)")
+    marks = {"pass": "PASS", "brief": "SHORT", "fail": "FLAG"}
     for v in verdicts:
-        mark = "PASS" if v["stopped"] else "FLAG"
-        print(f"  [{mark}] sign {v['start']:.0f}-{v['end']:.0f}s -> {v['verdict']}")
+        detail = f" ({v['stop_len']:.1f}s of {v['target_s']:.0f}s)" if v["stopped"] else ""
+        print(
+            f"  [{marks[v['grade']]}] sign {v['start']:.0f}-{v['end']:.0f}s -> "
+            f"{v['verdict']}{detail}"
+        )
+
+    if rejected:
+        print(f"\n  {len(rejected)} unconfirmed detection(s) dropped - "
+              "no neighbouring sample agreed:")
+        for t, field, value in rejected:
+            print(f"    {t:6.1f}s  {field} = {value!r}")
 
 
 if __name__ == "__main__":
