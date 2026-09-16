@@ -99,8 +99,12 @@ class RangeHandler(SimpleHTTPRequestHandler):
                 break
             try:
                 outputfile.write(chunk)
-            except (BrokenPipeError, ConnectionResetError):
-                # Normal when the viewer seeks away mid-download.
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                # Normal when the viewer seeks away mid-download: the browser
+                # drops the range request and opens a new one. Windows raises
+                # ConnectionAbortedError (WinError 10053) here rather than the
+                # reset the other platforms give, and without it every seek
+                # prints a twenty-line traceback over the useful output.
                 break
             remaining -= len(chunk)
 
@@ -193,9 +197,28 @@ def main():
         SENDER = connect_board(args.unoq or None)
 
     handler = partial(RangeHandler, directory=str(args.root))
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
 
-    url = f"http://127.0.0.1:{args.port}/output/player.html"
+    # A leftover server from an earlier run holds the port and binding fails
+    # with a bare traceback, which reads like a bug in this script. Step to the
+    # next free port instead and say so.
+    server = None
+    for port in range(args.port, args.port + 10):
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+        except OSError:
+            continue
+        if port != args.port:
+            print(f"  port {args.port} is in use - serving on {port} instead")
+        break
+
+    if server is None:
+        sys.exit(
+            f"ports {args.port}-{args.port + 9} are all in use.\n"
+            "Something is probably still running from an earlier session:\n"
+            f"  netstat -ano | grep :{args.port}"
+        )
+
+    url = f"http://127.0.0.1:{port}/output/player.html"
     print(f"serving {args.root}")
     print(f"open {url}   (Ctrl-C to stop)")
     if args.open:

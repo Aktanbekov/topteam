@@ -5,6 +5,7 @@
 #   ./run.sh                     analyse the video in the project root
 #   ./run.sh clips/drive2.mov    analyse a specific file
 #   ./run.sh --reuse             skip the vision pass, just rebuild the player
+#   ./run.sh --unoq              also drive the UNO Q hardware as the video plays
 #   ./run.sh --every 5           sample the vision model every 5s instead of 3
 #
 # On Windows, run this from Git Bash (installed with Git for Windows).
@@ -20,12 +21,17 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 GENIEX_PORT=18181
 VISION_EVERY=3.0
 REUSE=0
+UNOQ=0
 VIDEO=""
+MCP_PORT=3001
+PLAYER_PORT=8000
+BOARD_DIR=/home/arduino/topteam
 
 # ---------------------------------------------------------------- arguments
 while [ $# -gt 0 ]; do
   case "$1" in
     --reuse) REUSE=1; shift ;;
+    --unoq) UNOQ=1; shift ;;
     --every) VISION_EVERY="$2"; shift 2 ;;
     -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 1 ;;
@@ -145,8 +151,73 @@ say "Building the player"
   --timeline output/timeline.json \
   --out output/player.html
 
+# -------------------------------------------------------------------- uno q
+# Everything reaches the board over USB. Wi-Fi is deliberately not used: wlan0
+# was down out of the box, and a hotspot is one more thing to fail on stage.
+if [ "$UNOQ" = "1" ]; then
+  say "UNO Q over USB"
+
+  # adb ships with App Lab rather than on PATH.
+  ADB=""
+  if command -v adb >/dev/null 2>&1; then
+    ADB="adb"
+  else
+    for a in "$LOCALAPPDATA"/Arduino15/packages/arduino/tools/adb/*/adb.exe \
+             "$HOME"/AppData/Local/Arduino15/packages/arduino/tools/adb/*/adb.exe; do
+      [ -x "$a" ] && ADB="$a" && break
+    done
+  fi
+  [ -n "$ADB" ] || die "adb not found. Install Arduino App Lab, or put adb on PATH."
+
+  # Git Bash rewrites /home/arduino into a Windows path and adb push then fails
+  # with 'secure_mkdirs failed'. This is the fix, and it must be exported.
+  export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+
+  if ! "$ADB" devices | grep -qw device; then
+    die "no board over USB. Check the cable, then:  $ADB devices"
+  fi
+  echo "    board connected"
+
+  "$ADB" push unoq/arduino_bridge.py unoq/mcp_server.py "$BOARD_DIR/" >/dev/null 2>&1 \
+    || die "could not copy the server to the board"
+
+  if "$ADB" shell "ss -lnt 2>/dev/null | grep -q :$MCP_PORT"; then
+    echo "    MCP server already running on the board"
+  else
+    echo "    starting the MCP server on the board"
+    # setsid detaches it, otherwise adb holds the connection open and we hang.
+    "$ADB" shell "cd $BOARD_DIR && setsid nohup python3 mcp_server.py > mcp.log 2>&1 < /dev/null &" \
+      >/dev/null 2>&1 || true
+    for _ in $(seq 1 15); do
+      "$ADB" shell "ss -lnt 2>/dev/null | grep -q :$MCP_PORT" && break
+      sleep 1
+    done
+    if ! "$ADB" shell "ss -lnt 2>/dev/null | grep -q :$MCP_PORT"; then
+      "$ADB" shell "tail -5 $BOARD_DIR/mcp.log" >&2 || true
+      die "the board's MCP server did not start.
+    Is fastmcp installed there?  $ADB shell 'pip3 install fastmcp --break-system-packages'"
+    fi
+  fi
+
+  # The tunnel does not survive unplugging the cable, so always re-establish it.
+  "$ADB" forward tcp:$MCP_PORT tcp:$MCP_PORT >/dev/null \
+    || die "could not forward tcp:$MCP_PORT"
+  echo "    tunnel up on 127.0.0.1:$MCP_PORT"
+fi
+
 # --------------------------------------------------------------------- open
 PLAYER="output/player.html"
+
+if [ "$UNOQ" = "1" ]; then
+  # The page has to be SERVED, not opened from disk: it posts level changes
+  # back to its own origin and serve_player relays them to the board. A
+  # file:// page has no origin to post to, so the hardware would sit idle.
+  say "Serving the player and driving the hardware"
+  echo "    Ctrl-C to stop"
+  echo
+  exec "$PY" -u tools/serve_player.py --port "$PLAYER_PORT" --open --unoq
+fi
+
 say "Opening $PLAYER"
 
 if command -v cygpath >/dev/null 2>&1; then
@@ -162,3 +233,4 @@ fi
 echo
 echo "If the video will not play, serve it over localhost instead:"
 echo "    $PY tools/serve_player.py --open"
+echo "To drive the UNO Q as it plays:  ./run.sh --reuse --unoq"
