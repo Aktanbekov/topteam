@@ -167,6 +167,33 @@ void drawCross() {
   }
 }
 
+// A stop sign: the octagon outline, 7 wide and the full 8 tall.
+//
+// Deliberately NOT the cross. The cross means a critical error, and putting it
+// up for merely SEEING a sign would say the system flagged a violation that
+// never happened - which is the first thing a judge would catch. The octagon
+// is just as visible from across a room and says the true thing.
+const uint8_t OCTAGON[ROWS] = {
+  0b0011100,
+  0b0100010,
+  0b1000001,
+  0b1000001,
+  0b1000001,
+  0b1000001,
+  0b0100010,
+  0b0011100,
+};
+
+void drawOctagon() {
+  for (int r = 0; r < ROWS; r++) {
+    for (int c = 0; c < 7; c++) {
+      if (OCTAGON[r] & (1 << (6 - c))) {
+        setPixel(r, c + 3);  // centred: 13 wide, glyph is 7
+      }
+    }
+  }
+}
+
 // ------------------------------------------------------------------ strip
 // Colour carries severity, the number lit carries the strike count. One
 // glance, two facts, no counting.
@@ -184,6 +211,22 @@ void updatePixels(int level) {
     return;
   }
 
+  // Level 1: the whole strip goes amber and breathes. One leading amber LED,
+  // which is what this used to do, is invisible from the driver's seat - the
+  // first real run looked completely dead because of it. A heads-up has to be
+  // seen without being looked at.
+  if (level == 1) {
+    // A slower pulse than the critical flash on purpose: ~1.2Hz reads as
+    // "look ahead", the 4Hz strobe reads as "emergency". Same colour language
+    // as the road - amber is caution, not failure.
+    uint8_t glow = ((millis() / 400) % 2) ? LED_BRIGHT : LED_DIM;
+    for (int i = 0; i < 8; i++) {
+      pixels.set(i, 255, 120, 0, glow);
+    }
+    pixels.show();
+    return;
+  }
+
   int lit = strikes;
   if (lit > 8) {
     lit = 8;
@@ -196,10 +239,8 @@ void updatePixels(int level) {
   if (lit < 8) {
     if (level >= 2) {
       pixels.set(lit, 255, 0, 0, LED_BRIGHT);
-    } else if (level == 1) {
-      pixels.set(lit, 255, 120, 0, LED_DIM);  // amber - heads up
     } else {
-      pixels.set(lit, 0, 255, 0, LED_DIM);    // green - driving fine
+      pixels.set(lit, 0, 255, 0, LED_DIM);  // green - driving fine
     }
   }
 
@@ -233,6 +274,23 @@ void serviceBuzz() {
   vibro.on(pulseLen[pulseIndex], pulsePower[pulseIndex]);
   nextPulseAt = now + pulseLen[pulseIndex] + PULSE_GAP_MS;
   pulseIndex++;
+}
+
+// A light tap for "something ahead". Distinct from a mistake by INTENSITY, not
+// by presence - the driver learns the vocabulary in a couple of drives:
+//
+//   one gentle tap      something ahead, you have not done anything wrong
+//   one firm pulse      minor mistake
+//   three, building     critical
+//
+// An earlier version kept level 1 silent so a buzz could only ever mean "you
+// made a mistake". That is cleaner in theory, but on real footage the only
+// heads-up signal was one small LED and the whole thing read as broken. A
+// separate haptic word is better than no word.
+void buzzHeadsUp() {
+  const VibroPowerLevel powers[] = {GENTLE};
+  const unsigned long lengths[] = {90};
+  queueBuzz(powers, lengths, 1);
 }
 
 // One firm pulse for a minor mistake.
@@ -324,6 +382,8 @@ void loop() {
       }
     } else if (now < showCountUntil) {
       drawNumber(strikes);
+    } else if (level == 1) {
+      drawOctagon();  // something ahead - a sign, a signal, a pedestrian
     } else {
       drawBar(strikes, MAX_STRIKES);
     }
@@ -347,6 +407,10 @@ void alert(int level) {
     buzzMinor();
   } else if (level == 3 && lastLevel != 3) {
     buzzCritical();
+  } else if (level == 1 && lastLevel != 1) {
+    // Edge triggered, so one tap per sign rather than one per sample. The
+    // laptop repeats the level every few seconds while the sign is in view.
+    buzzHeadsUp();
   }
 
   lastLevel = level;

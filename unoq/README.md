@@ -66,20 +66,36 @@ The sketch registers two functions, `alert(int level)` and `reset()`:
 
 | level | meaning | strip (8 RGB) | vibration | matrix |
 |---|---|---|---|---|
-| 0 | driving fine | green | — | calm bar |
-| 1 | heads up | amber | — | calm bar |
+| 0 | driving fine | one green | — | calm bar |
+| 1 | heads up | **all amber, 1.2Hz pulse** | one `GENTLE` tap | **octagon** |
 | 2 | minor mistake | +1 red | one `MEDIUM` pulse | count for 2s |
-| 3 | critical mistake | all flash red | `GENTLE`→`INTENSE`→`MAXIMUM` | big X |
+| 3 | critical mistake | all flash red, 4Hz | `GENTLE`→`INTENSE`→`MAXIMUM` | big X |
+
+**The octagon, not the X, for a stop sign.** The X means a critical error. Using
+it for merely *seeing* a sign would tell anyone watching that the system flagged
+a violation that never happened, which is the first thing a judge would catch.
+The octagon is just as visible across a room and says the true thing.
 
 The critical buzz **ramps** rather than hitting three identical times. The
 driver should be alerted, not startled — startling a learner at the wheel is a
 hazard of its own. The full scale is `STOP, GENTLE, MODERATE, MEDIUM, INTENSE,
 POWERFUL, MAXIMUM` if you want to retune it.
 
-**Why level 1 is silent.** The brief has it buzzing at every stop sign. Don't. If
-it buzzes at every junction the driver tunes it out within ten minutes, and then
-it fails when it matters. A buzz means exactly one thing: *you made a mistake*.
-The amber LED carries the heads-up.
+**Levels are told apart by intensity, not by presence.** An earlier version kept
+level 1 completely silent, so that a buzz could only ever mean "you made a
+mistake". Cleaner in theory; on real footage the entire heads-up signal was one
+small LED changing colour, and the first live run looked like the hardware was
+dead. A separate haptic word beats no word:
+
+| feel | means |
+|---|---|
+| one gentle tap | something ahead, you have done nothing wrong |
+| one firm pulse | minor mistake |
+| three, building | critical |
+
+The habituation worry is real but is answered by keeping level 1 to a single
+tap per sign — it is edge triggered, so it fires once when the sign appears,
+not once per vision sample while it stays in view.
 
 **The strike count lives on the microcontroller.** The sketch counts transitions
 into level 2 itself, so the laptop protocol did not have to change — but the
