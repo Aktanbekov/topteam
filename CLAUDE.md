@@ -180,6 +180,14 @@ OpenAI-compatible API does not say which unit served a request.
 - **Measured 2026-09-15:** ~2.7 s per vision call on a 640x480 frame once the model is warm
   (~15 s on the very first call, which includes model load). So the smart layer realistically
   samples every 3 s, not the 1-2 s originally assumed. Budget for that lag in the state machine.
+- **Re-measured 2026-09-16 on the canonical run:** 3.47 s warm median, 3.5 s p95 over 38 calls,
+  first call 14.3 s. A 113.7 s clip took 156.7 s to analyse - a real-time ratio of **0.73x**.
+  This is review speed, not live speed, and the page says so.
+- **`geniex serve --keepalive` defaults to 300 s.** Leave the server idle for five minutes and
+  it unloads the model; the next call then pays the reload - measured 22.3 s, after which it is
+  back to 3.8 s. It does not affect the demo, where the analysis is already done and `--reuse`
+  makes no calls at all, but a fresh `./run.sh` after a long wait will look hung for twenty
+  seconds. Raise it with `geniex serve -c npu --keepalive 3600` if that matters.
 - Neither layer is enough on its own. Mistake logic is a **state machine** combining both
   over time. It lives in `laptop/drive_review.py`, does no I/O, and is unit tested without
   a model, a video or a board anywhere near it.
@@ -494,6 +502,28 @@ no violation, so the drive only ever reaches level 1. The strip pulses amber and
 shows the octagon, but the buzz for a mistake, the strike counter and the X never fire in a
 real run — `laptop/test_signals.py` is the only way to see them. Get a clip with a genuine
 rolling stop or red-light crossing before anything else.
+
+## It is NOT live, and we never say it is
+
+Worth being blunt, because it is the easiest claim to overstate and the easiest to catch:
+
+- **There is no camera capture path at all.** `VideoSource` takes a file path and raises
+  `FileNotFoundError` on anything else. Nothing reads a webcam or a device node.
+- **The analysis is slower than the footage.** 0.73x real time on the canonical run, because
+  38 calls at 3.47 s each is 132 s of inference for 114 s of video.
+- **Confirmation costs one sampling interval by design.** A claim is only acted on once a
+  neighbouring sample agrees, so a warning is ~3 s behind the event even in principle.
+- **What IS synchronised live: the replay.** As the video plays, the board reacts at the exact
+  timestamps from the level track, through the USB relay. That is genuine hardware reacting in
+  real time - to decisions computed earlier.
+
+So the honest phrasing is "post-drive review with synchronised evidence replay", which is what
+the page, the report and the README all say. Calling it live detection would be the one claim
+on stage that a judge could disprove with a stopwatch.
+
+A real live mode would need: a capture source, a sampling interval above the call latency
+(5 s+, or a smaller model), and the state machine fed incrementally rather than over a finished
+timeline. It is on the deferred list in the implementation plan for good reason.
 
 ## Demo plan
 - Play a dashcam video as if live; LEDs/buzzer react; counter goes up; report appears at the end.

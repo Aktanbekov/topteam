@@ -156,6 +156,11 @@ refuses to quote a speedup. Have it ready in the second terminal.)*
 > advice, not a strike. Level 2 works — `python laptop/test_signals.py` — no
 > check currently produces it, and we'd rather say that than invent one."
 
+**"Is this running live?"**
+> "No, and we don't claim it is. This is post-drive review with the evidence replayed in
+> sync — the board really is reacting in real time, to decisions computed earlier. The
+> analysis itself runs at about 0.7x real time, and the page prints that number."
+
 **"What's the business?"**
 > "Parents of teen drivers on subscription; driving schools per-seat. Both care
 > about privacy and neither has to trust a cloud with a child's face."
@@ -180,6 +185,9 @@ python -m pytest
       feature; be ready to say so if someone notices)
 - [ ] The report opens and prints
 - [ ] `./run.sh --calm` leaves the board green before you start
+- [ ] If you have been set up for more than five minutes and plan to run a FRESH
+      analysis, fire one warm-up call first — GenieX unloads the model after 300s
+      idle and the next call takes ~22s. `--reuse` makes no calls, so it is unaffected.
 - [ ] Backup recording is on the desktop and plays
 
 ## If it falls over on stage

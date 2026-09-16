@@ -375,9 +375,12 @@ archive/             the superseded HTTP-over-Wi-Fi transport, and why
 - **No speed feed.** No CAN bus, no GPS. A very slow crawl cannot be told from a
   true standstill, so every stop finding is *possible*, and durations are worded
   as "about 1.1s at a standstill", never as a measured speed.
-- **Post-drive review, not live detection.** Events are replayed against the
-  recording in sync. A live path would carry roughly one sampling interval of
-  confirmation delay — about 3 seconds.
+- **Post-drive review, not live detection.** There is no camera capture path at
+  all — `VideoSource` takes a file. The analysis runs at **0.73× real time**
+  (113.7s of video took 156.7s), and confirmation costs one sampling interval
+  (~3s) by design, so a warning is behind the event even in principle. What *is*
+  live is the replay: the board reacts at the exact timestamps as the video
+  plays. Real hardware, in real time, to decisions computed earlier.
 - **The motion threshold is narrow.** 0.25 sits between a stopped car at 0.24 and
   a moving one at 0.31 on our real footage. Recalibrate on new footage with
   `python laptop/test_video.py <clip>` before trusting it.
