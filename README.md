@@ -16,6 +16,32 @@ Built for the Qualcomm GenieX track of the AI Infra Summit Hackathon.
 
 ---
 
+## The opportunity
+
+California's DMV serves over 35 million license and ID holders through 214
+facilities, but driving evaluations remain limited by trained staff and
+appointment capacity.
+
+Our first goal is not to replace examiners. We focus on preparation before the
+test.
+
+AI Driving Coach turns each practice drive into a structured lesson. It flags
+possible mistakes, provides immediate hardware feedback, and creates a private
+post-drive report without uploading video to the cloud.
+
+We would start with driving schools through hardware leases and monthly
+per-vehicle subscriptions. The system helps instructors review more practice,
+provide consistent feedback, and focus on situations requiring human judgment.
+
+After proving accuracy and measurable improvement, the platform can expand to
+commercial fleets, insurance safety programs, and eventually human-supervised
+public-sector pilots.
+
+We are not automating responsibility. We are making high-quality driving
+feedback available at scale.
+
+---
+
 ## Screenshot
 
 > **Placeholder.** Run `./run.sh --demo fail`, then screenshot the first
