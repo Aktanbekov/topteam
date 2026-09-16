@@ -484,6 +484,15 @@ rolling stop or red-light crossing before anything else.
   The signal smoke test deliberately uses only the built-in LED so no wiring is needed.
 
 ## Answered
+- **Is it really running on the NPU?** The QAIRT plugin will not run anywhere else
+  and says so. `geniex serve -c cpu` logs:
+  `qairt plugin only supports NPU inference; ignoring device='cpu' and running on NPU`
+  So an NPU-vs-CPU benchmark is impossible on this machine - the CPU run gives an
+  identical 3.4s because it IS the NPU run. `tools/benchmark_compute.py` reads that
+  line, records it, and refuses to print a speedup between two labels that ran on
+  the same silicon. The page still says "requested" because a build cannot check
+  this; the presenter should say the stronger thing.
+  Measured 2026-09-16: warm median 3.44s over 5 calls, first call 13.4s with load.
 - **What counts as "low motion" for a stop:** calibrated on IMG_9830. Stopped tops out at
   0.24, moving starts at 0.31, threshold 0.25. The gap is only 25% - do not tighten it
   without re-running `laptop/test_video.py` on the footage in question.

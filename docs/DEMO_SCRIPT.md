@@ -136,9 +136,14 @@ Stop talking.
 > every finding is 'possible'. It's a practice coach, not an examiner."
 
 **"How do you know it's on the NPU?"**
-> "We asked for it — `geniex serve -c npu`. The API doesn't report which unit
-> served a request, so the page says 'requested', not 'verified'. We won't put a
-> badge up we can't stand behind."
+> "The page only claims we *asked* for it, because the API doesn't report back.
+> But we tried to benchmark against CPU and the plugin wouldn't let us — it
+> logs 'qairt plugin only supports NPU inference; ignoring device=cpu and
+> running on NPU'. So there's no CPU number to get, and that refusal is better
+> evidence than the benchmark would have been."
+
+*(`python tools/benchmark_compute.py --compare` prints exactly that, and
+refuses to quote a speedup. Have it ready in the second terminal.)*
 
 **"That's synthetic footage."**
 > "It is, and the page says so in amber. We have real footage of a correct stop

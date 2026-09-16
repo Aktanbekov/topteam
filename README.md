@@ -163,8 +163,29 @@ should refuse to install.
   which is what makes the temporal logic possible at all.
 - W4A16 quantisation is what fits a 4B VLM in a laptop's power budget.
 - The review page reports the compute unit as **requested**, never as verified.
-  The OpenAI-compatible API does not say which unit served a request, so there
-  is nothing to read back, and a badge we cannot stand behind is worse than none.
+  The OpenAI-compatible API does not say which unit served a request, so the
+  page has nothing to read back, and a badge we cannot stand behind is worse
+  than none.
+
+**But the plugin answers the question itself.** Start the server with `-c cpu`
+and it logs:
+
+```
+Warning: qairt plugin only supports NPU inference; ignoring device='cpu' and running on NPU
+```
+
+So there is no CPU number to get on this machine — and that refusal is better
+evidence than a benchmark would have been. A backend that will not run anywhere
+except the NPU, and says so in its own log, is the closest thing to proof
+available here. `tools/benchmark_compute.py` reads that line, records it, and
+declines to print a speedup between two labels that both ran on the same silicon:
+
+```bash
+python tools/benchmark_compute.py --compare
+```
+
+Measured warm on the NPU: **3.44s median over 5 calls**, first call 13.4s
+including model load.
 
 ## Why the UNO Q matters here
 
@@ -312,6 +333,7 @@ tools/
   make_player.py     orchestrates a build: review.json + player.html + report.html
   serve_player.py    localhost server with byte ranges, and the hardware relay
   eval_scene_prompt.py   score a prompt change against hand-labelled frames
+  benchmark_compute.py   time the vision call, and read the plugin's own verdict
   make_test_clip.py  render a synthetic clip with exact ground truth
   freeze_demo.py     record a real run so the demo survives GenieX being down
 unoq/

@@ -82,6 +82,6 @@ verify nothing has drifted.
 | A judge reads "critical error" on synthetic footage as a real driving event | The amber banner is on every page and the demo script says it out loud at 2:40. Say it before they ask. |
 | The board does not enumerate on the venue's USB | Drop `--unoq`. The page is the whole product without it and the panel says "not connected" honestly. |
 | GenieX will not start under time pressure | `./run.sh --demo fail` falls back to recorded labels and says so. Read the banner aloud. |
-| "Is it really on the NPU?" | Answer with the requested/verified distinction. It is a stronger answer than a badge would have been. |
+| "Is it really on the NPU?" | The plugin refuses to run anywhere else and logs it. `python tools/benchmark_compute.py --compare` shows that line and declines to quote a speedup. Stronger than a badge. |
 | The strike counter never moves in a live run | True and intentional. Level 2 has no producer because a brief stop is legal. Say so; `test_signals.py` shows the hardware works. |
 | Only one real clip | Acknowledged in the README limitations. The fix is footage, not code. |

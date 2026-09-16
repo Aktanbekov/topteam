@@ -92,6 +92,21 @@ Watch the **FALSE ALARM** column. `strict` should be at 0 on those 38 frames. A
 missed detection costs one finding; a false alarm costs a fabricated error in
 front of a judge.
 
+Inference timing, and where it actually runs:
+
+```bash
+python tools/benchmark_compute.py --label npu --frames 6
+```
+
+```bash
+python tools/benchmark_compute.py --compare
+```
+
+Measured 2026-09-16: warm median **3.44s** over 5 calls, first call 13.4s
+including model load. Asking for `-c cpu` produces an identical number and a
+log line saying the plugin ignored the request and ran on the NPU anyway, so
+`--compare` refuses to print a speedup. Check that it still refuses.
+
 Motion threshold on new footage:
 
 ```bash
@@ -162,9 +177,15 @@ Through the full one-command path, `./run.sh --demo fail --unoq`, not a mock:
   documentation-only edits — the header table now matches `alert()`. Deploying
   needs Arduino App Lab, which is a GUI. If you re-flash, run
   `laptop/test_signals.py` immediately afterwards.
-- **NPU execution is requested, not confirmed.** `geniex serve -c npu` is what we
-  ask for; the OpenAI-compatible API does not report which unit served a
-  request. The page says "requested" everywhere and the README says why.
+- **NPU execution is requested, not confirmed by the API.** `geniex serve -c npu`
+  is what we ask for and the OpenAI-compatible API never reports back, so the
+  page says "requested" everywhere.
+
+  It is, however, corroborated out of band: asking for `-c cpu` makes the
+  plugin log *"qairt plugin only supports NPU inference; ignoring device='cpu'
+  and running on NPU"*. That is the backend saying it has no other option. The
+  page does not use this - it is gathered from a log after the fact, not
+  something a build can check - but the presenter should.
 
 ---
 
